@@ -11,6 +11,7 @@ eigenständiges, fullscreen-/projektionstaugliches Web-Stück.
 | 03 | Glühende Republik | **deck.gl** | Deutschland als Lichtkarte; Bundesländer glühen nach Wert, Indikatoren wechseln im Takt. |
 | 04 | Die Kunst der Klarheit | **D3** | Editorial-Broadsheet: Vertrauen, Parteien, Länder — typografisch streng. |
 | 05 | Kern & Verdrossenheit | **p5.js** | Heller, parteifarbener Leuchtkern der Wähler; drumherum ein matter Partikelring = Politikverdrossenheit. |
+| 06 | Drei Welten | **p5.js** | Eine Welt wandert durch drei Zustände: 0 % (grauer Ring), wie heute (BTW 2025), 100 % (heller Kern). `?e=0..1` friert einen Zustand ein. |
 
 ## Daten
 `data.json` wird aus `../data/processed/*.csv` gebacken:

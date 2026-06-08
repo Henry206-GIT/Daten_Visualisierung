@@ -1,16 +1,19 @@
-/* 06 · Zwei Welten — Niemand wählt ⟷ Alle wählen
+/* 06 · Drei Welten — 0 % ⟷ wie heute ⟷ 100 %
    p5.js · Ausstellungs-Loop
-   Eine einzige Partikelwelt atmet zwischen zwei Extremen:
-     0 %  Beteiligung  → alle Partikel grau, verstreut in einem Ring  (totale Verdrossenheit)
-     100 % Beteiligung → alle Partikel hell & parteifarben im Kern    (volle Teilhabe)
-   Beteiligung schwingt langsam hin und her. Jeder Partikel hat eine Schwelle und
-   wandert beim Überschreiten von außen (grau) nach innen (hell, parteifarben).        */
+   Eine einzige Partikelwelt wandert durch drei Zustände der Beteiligung:
+     0 %        → alle Partikel grau, verstreut in einem Ring   (totale Verdrossenheit)
+     ~82,5 %    → so wie heute in Deutschland (BTW 2025)         (Realität)
+     100 %      → alle Partikel hell & parteifarben im Kern      (volle Teilhabe)
+   Jeder Partikel hat eine Schwelle und wandert beim Überschreiten von außen
+   (grau, Ring) nach innen (hell, parteifarben, Kern).                                 */
 
 const N = 2200;
-const PERIOD = 22;          // Sekunden für einen vollen Hin-und-Her-Zyklus
+const HOLD = 4.0;           // Sekunden Verweilen je Zustand (Schrift gut lesbar)
+const MORPH = 3.5;          // Sekunden Übergang zwischen Zuständen
 const GREY = [150, 150, 158];
 
 let DATA, FARBEN, parts = [];
+let ER = 0.825;             // reale Beteiligung DE (aus data.json)
 let t0 = 0;                 // Startzeit (s)
 let cap = {};
 // optionaler Test-/Standbild-Hook: ?e=0..1 friert die Beteiligung fest ein
@@ -22,6 +25,7 @@ function preload() { DATA = loadJSON('../data.json'); }
 function setup() {
   createCanvas(windowWidth, windowHeight);
   FARBEN = DATA.farben;
+  ER = DATA.bund.beteiligung / 100;          // reale Beteiligung (BTW 2025)
   cap.big  = document.querySelector('#cap .big');
   cap.pole = document.querySelector('#cap .pole');
 
@@ -57,8 +61,9 @@ function ss(a, b, x) { x = constrain((x - a) / (b - a), 0, 1); return x * x * (3
 
 function geom() {
   const md = min(width, height);
-  return { cx: width / 2, cy: height / 2,
-           coreR: md * 0.26, ringIn: md * 0.34, ringOut: md * 0.50 };
+  // kleiner + höher gesetzt: unteres Drittel bleibt frei für die Schrift
+  return { cx: width / 2, cy: height * 0.40,
+           coreR: md * 0.16, ringIn: md * 0.22, ringOut: md * 0.31 };
 }
 
 function seedPositions(E) {
@@ -76,9 +81,16 @@ function seedPositions(E) {
 
 function engagement(tSec) {
   if (FORCE_E !== null) return FORCE_E;          // eingefroren (Test/Standbild)
-  // 0 -> 1 -> 0, weich (cos), mit kurzem Verweilen an den Extremen
-  const raw = 0.5 - 0.5 * cos(TWO_PI * tSec / PERIOD);
-  return ss(0.05, 0.95, raw);
+  // Timeline: 0% -> wie heute -> 100% -> wie heute -> (Schleife), je mit Verweilen
+  const seq = [0, ER, 1, ER];
+  const step = MORPH + HOLD;
+  const tt = (tSec % (seq.length * step));
+  const i = Math.floor(tt / step);
+  const local = tt - i * step;
+  const from = seq[(i - 1 + seq.length) % seq.length];
+  const to = seq[i];
+  if (local < MORPH) return lerp(from, to, ss(0, 1, local / MORPH));
+  return to;                                     // Halten (Schrift lesbar)
 }
 
 function draw() {
@@ -132,11 +144,12 @@ function draw() {
 }
 
 function updateCaption(E) {
-  const pct = Math.round(E * 100);
-  cap.big.textContent = `Wahlbeteiligung ${pct} %`;
-  if (E < 0.15)      cap.pole.textContent = 'Niemand wählt — totale Verdrossenheit';
-  else if (E > 0.85) cap.pole.textContent = 'Alle wählen — volle Teilhabe';
-  else               cap.pole.textContent = (E < 0.5 ? 'Der Ring zerfällt nach innen…' : '…oder löst sich wieder auf');
+  const pct = (E * 100).toFixed(E > 0.001 && E < 0.999 && Math.abs(E - ER) < 0.02 ? 1 : 0);
+  cap.big.textContent = `Wahlbeteiligung ${pct.replace('.', ',')} %`;
+  if (E < 0.02)                     cap.pole.textContent = 'Niemand wählt — totale Verdrossenheit';
+  else if (E > 0.98)                cap.pole.textContent = 'Alle wählen — volle Teilhabe';
+  else if (Math.abs(E - ER) < 0.02) cap.pole.textContent = 'So wie heute — Bundestagswahl 2025';
+  else                              cap.pole.textContent = '…';
 }
 
 function windowResized() { resizeCanvas(windowWidth, windowHeight); seedPositions(); }
