@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Glühende Republik · 2025</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #07080c;
+      overflow: hidden;
+      cursor: none;
+    }
+
+    #deck-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #deck-container canvas {
+      display: block;
+    }
+
+    /* Caption overlay — bottom-left, elegant serif */
+    #caption {
+      position: fixed;
+      bottom: 52px;
+      left: 60px;
+      z-index: 10;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.8s ease;
+    }
+
+    #caption.visible {
+      opacity: 1;
+    }
+
+    #caption-label {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      font-size: 13px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.35);
+      margin-bottom: 6px;
+    }
+
+    #caption-title {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      font-size: 28px;
+      font-weight: normal;
+      letter-spacing: 0.04em;
+      color: rgba(255, 255, 255, 0.82);
+      line-height: 1.15;
+      margin-bottom: 4px;
+    }
+
+    #caption-year {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      font-size: 13px;
+      letter-spacing: 0.18em;
+      color: rgba(255, 255, 255, 0.28);
+    }
+
+    /* Tiny scale legend dots */
+    #legend {
+      position: fixed;
+      bottom: 52px;
+      right: 60px;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      opacity: 0;
+      transition: opacity 0.8s ease;
+    }
+
+    #legend.visible { opacity: 1; }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Georgia', serif;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: rgba(255,255,255,0.38);
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Exhibition title — top-right, very faint */
+    #title-badge {
+      position: fixed;
+      top: 40px;
+      right: 60px;
+      z-index: 10;
+      pointer-events: none;
+      font-family: 'Georgia', serif;
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.15);
+    }
+  </style>
+</head>
+<body>
+  <div id="deck-container"></div>
+
+  <div id="caption">
+    <div id="caption-label">Bundestagswahl 2025</div>
+    <div id="caption-title">Wahlbeteiligung</div>
+    <div id="caption-year">2025</div>
+  </div>
+
+  <div id="legend"></div>
+
+  <div id="title-badge">Glühende Republik</div>
+
+  <script src="https://unpkg.com/deck.gl@8.9.35/dist.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

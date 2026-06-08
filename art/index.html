@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Politische Stimmung — Vier Ansichten</title>
+<style>
+  :root { --bg:#07080c; --fg:#e9e6df; --dim:#7a7d88; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; }
+  body {
+    background:var(--bg); color:var(--fg); min-height:100%;
+    font-family:"Georgia","Times New Roman",serif;
+    display:flex; flex-direction:column; padding:6vh 6vw;
+  }
+  header { margin-bottom:5vh; }
+  h1 { font-size:clamp(2rem,5vw,4.2rem); font-weight:400; letter-spacing:.01em; line-height:1.05; }
+  .sub { color:var(--dim); font-size:clamp(.9rem,1.4vw,1.15rem); margin-top:1.2rem; max-width:46rem; line-height:1.6; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1.5rem; flex:1; }
+  a.tile {
+    position:relative; display:flex; flex-direction:column; justify-content:flex-end;
+    text-decoration:none; color:var(--fg); border:1px solid #1c1e26;
+    border-radius:3px; padding:1.6rem; min-height:230px; overflow:hidden;
+    background:#0b0d13; transition:border-color .35s, transform .35s;
+  }
+  a.tile:hover { border-color:#3a3f52; transform:translateY(-3px); }
+  a.tile .no { position:absolute; top:1.2rem; left:1.4rem; color:var(--dim); font-size:.85rem; letter-spacing:.25em; }
+  a.tile h2 { font-size:1.55rem; font-weight:400; margin-bottom:.4rem; }
+  a.tile .fw { color:var(--dim); font-size:.82rem; font-family:"SF Mono",ui-monospace,monospace; letter-spacing:.04em; }
+  a.tile .desc { color:#9a9ca6; font-size:.92rem; line-height:1.5; margin-top:.7rem; }
+  .glow { position:absolute; inset:0; opacity:.32; pointer-events:none; }
+  .g1 { background:radial-gradient(120% 90% at 30% 110%, #19b6e8 0%, transparent 55%), radial-gradient(90% 80% at 80% 120%, #e0457b 0%, transparent 50%); }
+  .g2 { background:radial-gradient(120% 100% at 50% 120%, #46d160 0%, transparent 60%); }
+  .g3 { background:radial-gradient(120% 100% at 50% 120%, #ffe23d 0%, transparent 55%), radial-gradient(80% 80% at 20% 120%, #ff4d5e 0%, transparent 50%); }
+  .g4 { background:radial-gradient(120% 100% at 50% 120%, #c061ff 0%, transparent 60%); }
+  footer { margin-top:4vh; color:var(--dim); font-size:.8rem; line-height:1.7; max-width:50rem; }
+  footer code { font-family:"SF Mono",ui-monospace,monospace; color:#9a9ca6; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Politische Stimmung<br>— Vier Ansichten</h1>
+    <p class="sub">Eine künstlerische Mass-Data-Visualisierung der politischen Meinung
+    in Deutschland. Wahlbeteiligung als Maß der Politikverdrossenheit, Parteianteile,
+    Vertrauen. Dieselben offenen Daten — vier ästhetische Sprachen.</p>
+  </header>
+
+  <main class="grid">
+    <a class="tile" href="01_generativ/">
+      <div class="glow g1"></div><span class="no">01</span>
+      <h2>Der zerfallende Souverän</h2>
+      <span class="fw">p5.js · generativ</span>
+      <p class="desc">Jedes Partikel ein Wähler. Nichtwähler zerfallen zu Asche und driften
+      davon — Verdrossenheit als Erosion. Endlosschleife durch die 16 Länder.</p>
+    </a>
+    <a class="tile" href="02_immersiv/">
+      <div class="glow g2"></div><span class="no">02</span>
+      <h2>Stimmungsgebirge</h2>
+      <span class="fw">three.js · 3D immersiv</span>
+      <p class="desc">16 leuchtende Türme, Höhe = Beteiligung, Segmente = Parteien.
+      Eine langsame Kamerafahrt durch die Landschaft der Republik.</p>
+    </a>
+    <a class="tile" href="03_karte/">
+      <div class="glow g3"></div><span class="no">03</span>
+      <h2>Glühende Republik</h2>
+      <span class="fw">deck.gl · kartografisch</span>
+      <p class="desc">Deutschland als Lichtkarte. Bundesländer glühen nach Wert,
+      Indikatoren wechseln im Takt. Daten-Dichte als Fläche.</p>
+    </a>
+    <a class="tile" href="04_editorial/">
+      <div class="glow g4"></div><span class="no">04</span>
+      <h2>Die Kunst der Klarheit</h2>
+      <span class="fw">D3 · editorial</span>
+      <p class="desc">Strenge, typografisch feine Datengrafik. Vertrauen, Parteien,
+      Länder — reduziert, präzise, im Geist der großen Redaktionen.</p>
+    </a>
+    <a class="tile" href="05_partikelsturm/">
+      <div class="glow g1"></div><span class="no">05</span>
+      <h2>Kern &amp; Verdrossenheit</h2>
+      <span class="fw">p5.js · partikelsturm</span>
+      <p class="desc">Ein heller, zusammengehöriger Leuchtkern der Wähler — umschlossen
+      von einem matten, dämmrigen Partikelring: der Politikverdrossenheit.</p>
+    </a>
+    <a class="tile" href="06_zwei_welten/">
+      <div class="glow g2"></div><span class="no">06</span>
+      <h2>Zwei Welten</h2>
+      <span class="fw">p5.js · 0 % ⟷ 100 %</span>
+      <p class="desc">Eine Welt atmet zwischen den Extremen: niemand wählt (nur grauer Ring)
+      und alle wählen (alles im hellen Kern). Verdrossenheit, die nach innen zerfällt.</p>
+    </a>
+  </main>
+
+  <footer>
+    Daten: Eurostat <code>ilc_pw03</code> (allgemeines Vertrauen) · Bundeswahlleiterin
+    BTW 2025 (<code>kerg2</code>, DL-DE-BY-2.0) · GeoJSON isellsoap/deutschlandGeoJSON.
+    Wahlbeteiligung dient als Proxy für Politikverdrossenheit.
+  </footer>
+</body>
+</html>

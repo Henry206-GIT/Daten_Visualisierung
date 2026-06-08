@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kern & Verdrossenheit — Partikelsturm</title>
+<style>
+  html,body { margin:0; height:100%; background:#07080c; overflow:hidden; cursor:none; }
+  #cap {
+    position:fixed; left:3vw; bottom:3vh; color:#cfcbc2;
+    font-family:"Georgia",serif; pointer-events:none; opacity:0; transition:opacity 1.2s ease;
+  }
+  #cap .land { font-size:1.5rem; letter-spacing:.02em; }
+  #cap .sub  { font-size:.85rem; color:#8a8d98; margin-top:.25rem; letter-spacing:.04em; }
+</style>
+</head>
+<body>
+  <div id="cap"><div class="land"></div><div class="sub"></div></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <script src="sketch.js"></script>
+</body>
+</html>

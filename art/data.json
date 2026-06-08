@@ -1,0 +1,421 @@
+{
+  "parteien": [
+    "CDU",
+    "AfD",
+    "SPD",
+    "GRÜNE",
+    "Die Linke",
+    "CSU",
+    "BSW",
+    "FDP"
+  ],
+  "farben": {
+    "CDU": "#e6e6e6",
+    "SPD": "#ff4d5e",
+    "AfD": "#19b6e8",
+    "GRÜNE": "#46d160",
+    "FDP": "#ffe23d",
+    "CSU": "#5a9bd8",
+    "Die Linke": "#e0457b",
+    "BSW": "#c061ff",
+    "Nichtwähler": "#5a5a5a"
+  },
+  "bund": {
+    "name": "Deutschland",
+    "beteiligung": 82.51,
+    "shares": {
+      "SPD": 16.41,
+      "CDU": 22.55,
+      "GRÜNE": 11.61,
+      "FDP": 4.33,
+      "AfD": 20.8,
+      "CSU": 5.97,
+      "Die Linke": 8.78,
+      "BSW": 4.98
+    }
+  },
+  "laender": [
+    {
+      "name": "Baden-Württemberg",
+      "beteiligung": 83.39,
+      "shares": {
+        "CDU": 31.6,
+        "SPD": 14.15,
+        "GRÜNE": 13.63,
+        "FDP": 5.63,
+        "AfD": 19.79,
+        "Die Linke": 6.76,
+        "BSW": 4.1
+      }
+    },
+    {
+      "name": "Bayern",
+      "beteiligung": 84.34,
+      "shares": {
+        "CSU": 37.18,
+        "SPD": 11.55,
+        "GRÜNE": 12.01,
+        "FDP": 4.18,
+        "AfD": 19.01,
+        "Die Linke": 5.73,
+        "BSW": 3.09
+      }
+    },
+    {
+      "name": "Berlin",
+      "beteiligung": 80.31,
+      "shares": {
+        "SPD": 15.14,
+        "GRÜNE": 16.83,
+        "CDU": 18.27,
+        "Die Linke": 19.86,
+        "AfD": 15.23,
+        "FDP": 3.8,
+        "BSW": 6.65
+      }
+    },
+    {
+      "name": "Brandenburg",
+      "beteiligung": 81.57,
+      "shares": {
+        "SPD": 14.81,
+        "AfD": 32.49,
+        "CDU": 18.09,
+        "FDP": 3.25,
+        "GRÜNE": 6.59,
+        "Die Linke": 10.7,
+        "BSW": 10.71
+      }
+    },
+    {
+      "name": "Bremen",
+      "beteiligung": 77.76,
+      "shares": {
+        "SPD": 23.14,
+        "GRÜNE": 15.59,
+        "CDU": 20.55,
+        "FDP": 3.53,
+        "Die Linke": 14.78,
+        "AfD": 15.07,
+        "BSW": 4.34
+      }
+    },
+    {
+      "name": "Hamburg",
+      "beteiligung": 80.88,
+      "shares": {
+        "SPD": 22.74,
+        "GRÜNE": 19.29,
+        "CDU": 20.75,
+        "FDP": 4.51,
+        "Die Linke": 14.45,
+        "AfD": 10.87,
+        "BSW": 4.01
+      }
+    },
+    {
+      "name": "Hessen",
+      "beteiligung": 83.11,
+      "shares": {
+        "SPD": 18.36,
+        "CDU": 28.87,
+        "GRÜNE": 12.61,
+        "FDP": 5.05,
+        "AfD": 17.78,
+        "Die Linke": 8.69,
+        "BSW": 4.43
+      }
+    },
+    {
+      "name": "Mecklenburg-Vorpommern",
+      "beteiligung": 79.48,
+      "shares": {
+        "SPD": 12.4,
+        "AfD": 34.99,
+        "CDU": 17.82,
+        "Die Linke": 12.05,
+        "FDP": 3.2,
+        "GRÜNE": 5.36,
+        "BSW": 10.56
+      }
+    },
+    {
+      "name": "Niedersachsen",
+      "beteiligung": 83.42,
+      "shares": {
+        "SPD": 23.0,
+        "CDU": 28.12,
+        "GRÜNE": 11.5,
+        "FDP": 4.09,
+        "AfD": 17.84,
+        "Die Linke": 8.09,
+        "BSW": 3.78
+      }
+    },
+    {
+      "name": "Nordrhein-Westfalen",
+      "beteiligung": 82.18,
+      "shares": {
+        "SPD": 20.03,
+        "CDU": 30.12,
+        "GRÜNE": 12.36,
+        "FDP": 4.39,
+        "AfD": 16.82,
+        "Die Linke": 8.33,
+        "BSW": 4.11
+      }
+    },
+    {
+      "name": "Rheinland-Pfalz",
+      "beteiligung": 82.95,
+      "shares": {
+        "SPD": 18.64,
+        "CDU": 30.64,
+        "GRÜNE": 10.35,
+        "FDP": 4.59,
+        "AfD": 20.09,
+        "Die Linke": 6.52,
+        "BSW": 4.23
+      }
+    },
+    {
+      "name": "Saarland",
+      "beteiligung": 82.44,
+      "shares": {
+        "SPD": 21.87,
+        "CDU": 26.86,
+        "FDP": 4.29,
+        "AfD": 21.56,
+        "Die Linke": 7.35,
+        "GRÜNE": 7.23,
+        "BSW": 6.17
+      }
+    },
+    {
+      "name": "Sachsen",
+      "beteiligung": 81.11,
+      "shares": {
+        "AfD": 37.3,
+        "SPD": 8.45,
+        "CDU": 19.74,
+        "FDP": 3.25,
+        "Die Linke": 11.3,
+        "GRÜNE": 6.51,
+        "BSW": 9.04
+      }
+    },
+    {
+      "name": "Sachsen-Anhalt",
+      "beteiligung": 77.7,
+      "shares": {
+        "SPD": 10.96,
+        "CDU": 19.18,
+        "AfD": 37.1,
+        "Die Linke": 10.75,
+        "FDP": 3.08,
+        "GRÜNE": 4.42,
+        "BSW": 11.25
+      }
+    },
+    {
+      "name": "Schleswig-Holstein",
+      "beteiligung": 83.52,
+      "shares": {
+        "SPD": 18.75,
+        "CDU": 27.58,
+        "GRÜNE": 14.89,
+        "FDP": 4.69,
+        "AfD": 16.29,
+        "Die Linke": 7.79,
+        "BSW": 3.45
+      }
+    },
+    {
+      "name": "Thüringen",
+      "beteiligung": 80.7,
+      "shares": {
+        "AfD": 38.55,
+        "SPD": 8.75,
+        "CDU": 18.58,
+        "Die Linke": 15.16,
+        "FDP": 2.82,
+        "GRÜNE": 4.24,
+        "BSW": 9.42
+      }
+    }
+  ],
+  "vertrauen": [
+    {
+      "jahr": 2013,
+      "wert": 5.5
+    },
+    {
+      "jahr": 2018,
+      "wert": 5.7
+    },
+    {
+      "jahr": 2023,
+      "wert": 5.5
+    },
+    {
+      "jahr": 2024,
+      "wert": 5.5
+    },
+    {
+      "jahr": 2025,
+      "wert": 5.6
+    }
+  ],
+  "vertrauen_alter": [
+    {
+      "jahr": 2013,
+      "gruppe": "16-24",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2013,
+      "gruppe": "25-34",
+      "wert": 5.3
+    },
+    {
+      "jahr": 2013,
+      "gruppe": "35-49",
+      "wert": 5.3
+    },
+    {
+      "jahr": 2013,
+      "gruppe": "50-64",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2013,
+      "gruppe": "65-74",
+      "wert": 5.9
+    },
+    {
+      "jahr": 2013,
+      "gruppe": "75+",
+      "wert": 6.1
+    },
+    {
+      "jahr": 2018,
+      "gruppe": "16-24",
+      "wert": 5.7
+    },
+    {
+      "jahr": 2018,
+      "gruppe": "25-34",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2018,
+      "gruppe": "35-49",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2018,
+      "gruppe": "50-64",
+      "wert": 5.6
+    },
+    {
+      "jahr": 2018,
+      "gruppe": "65-74",
+      "wert": 6.1
+    },
+    {
+      "jahr": 2018,
+      "gruppe": "75+",
+      "wert": 6.5
+    },
+    {
+      "jahr": 2023,
+      "gruppe": "16-24",
+      "wert": 5.7
+    },
+    {
+      "jahr": 2023,
+      "gruppe": "25-34",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2023,
+      "gruppe": "35-49",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2023,
+      "gruppe": "50-64",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2023,
+      "gruppe": "65-74",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2023,
+      "gruppe": "75+",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2024,
+      "gruppe": "16-24",
+      "wert": 5.7
+    },
+    {
+      "jahr": 2024,
+      "gruppe": "25-34",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2024,
+      "gruppe": "35-49",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2024,
+      "gruppe": "50-64",
+      "wert": 5.4
+    },
+    {
+      "jahr": 2024,
+      "gruppe": "65-74",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2024,
+      "gruppe": "75+",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2025,
+      "gruppe": "16-24",
+      "wert": 5.8
+    },
+    {
+      "jahr": 2025,
+      "gruppe": "25-34",
+      "wert": 5.6
+    },
+    {
+      "jahr": 2025,
+      "gruppe": "35-49",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2025,
+      "gruppe": "50-64",
+      "wert": 5.5
+    },
+    {
+      "jahr": 2025,
+      "gruppe": "65-74",
+      "wert": 5.6
+    },
+    {
+      "jahr": 2025,
+      "gruppe": "75+",
+      "wert": 5.5
+    }
+  ]
+}

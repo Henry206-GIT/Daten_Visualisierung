@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stimmungsgebirge — Deutschland 2025</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #07080c;
+      overflow: hidden;
+      cursor: none;
+      font-family: 'Georgia', 'Times New Roman', serif;
+    }
+    canvas { display: block; }
+
+    #caption {
+      position: fixed;
+      bottom: 2.4rem;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      color: rgba(255,255,255,0.38);
+      pointer-events: none;
+      user-select: none;
+      letter-spacing: 0.18em;
+      line-height: 1.7;
+    }
+    #caption .title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.32em;
+      color: rgba(255,255,255,0.22);
+    }
+    #caption .land {
+      font-size: 1.05rem;
+      font-style: italic;
+      color: rgba(255,255,255,0.55);
+      transition: opacity 0.8s ease;
+    }
+    #caption .sub {
+      font-size: 0.62rem;
+      letter-spacing: 0.24em;
+      color: rgba(255,255,255,0.18);
+      margin-top: 0.2rem;
+    }
+
+    #legend {
+      position: fixed;
+      top: 1.8rem;
+      right: 2rem;
+      pointer-events: none;
+      user-select: none;
+    }
+    .leg-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-bottom: 0.32rem;
+    }
+    .leg-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .leg-label {
+      font-size: 0.58rem;
+      letter-spacing: 0.14em;
+      color: rgba(255,255,255,0.28);
+      text-transform: uppercase;
+      font-family: 'Georgia', serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="caption">
+    <div class="title">Stimmungsgebirge</div>
+    <div class="land" id="landName">Deutschland</div>
+    <div class="sub">Bundestagswahl 2025 &nbsp;·&nbsp; Wahlbeteiligung &amp; Stimmanteile</div>
+  </div>
+  <div id="legend"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
