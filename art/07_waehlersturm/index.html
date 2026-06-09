@@ -11,30 +11,15 @@
               font-family:"Georgia",serif; color:var(--fg); }
   canvas { display:block; }
 
-  /* ---- Intro-Screens (Overlay) ---- */
-  .screen {
-    position:fixed; inset:0; z-index:20; display:none;
-    flex-direction:column; align-items:center; justify-content:center;
-    background:radial-gradient(120% 90% at 50% 30%, #0d0f16 0%, #07080c 70%);
-    padding:6vh 6vw; text-align:center;
+  /* ---- Dropdowns oben links ---- */
+  #controls { position:fixed; top:1rem; left:1rem; z-index:15; display:flex; gap:.6rem; }
+  #controls select {
+    background:rgba(10,12,18,.85); color:var(--fg); border:1px solid #2a2e3a;
+    border-radius:5px; padding:.55rem .8rem; font-family:"Georgia",serif; font-size:.95rem;
+    cursor:pointer; min-width:170px; backdrop-filter:blur(4px); outline:none;
   }
-  .screen.on { display:flex; }
-  .screen h1 { font-weight:400; font-size:clamp(1.6rem,3.2vw,2.6rem); margin-bottom:.6rem; }
-  .screen p  { color:var(--dim); font-size:1rem; margin-bottom:3vh; letter-spacing:.04em; }
-  .grid { display:grid; gap:.9rem; width:min(900px,90vw);
-          grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
-  .btn {
-    border:1px solid #23262f; background:#0c0e15; color:var(--fg);
-    padding:1rem .8rem; border-radius:4px; cursor:pointer; font-family:inherit;
-    font-size:1rem; transition:border-color .25s, transform .25s, background .25s;
-  }
-  .btn:hover { border-color:#454b60; transform:translateY(-2px); background:#11141d; }
-  .btn .sub { display:block; font-size:.8rem; color:var(--dim); margin-top:.25rem; }
-  .btn.party { display:flex; align-items:center; gap:.7rem; justify-content:center; }
-  .btn.party .dot { width:.85rem; height:.85rem; border-radius:50%; flex:0 0 auto; }
-  .back { margin-top:3vh; color:var(--dim); font-size:.85rem; cursor:pointer;
-          background:none; border:none; font-family:inherit; letter-spacing:.1em; }
-  .back:hover { color:var(--fg); }
+  #controls select:hover { border-color:#454b60; }
+  #controls select:disabled { opacity:.45; cursor:not-allowed; }
 
   /* ---- Caption (Schriftband unten) ---- */
   #cap {
@@ -61,38 +46,12 @@
   #panel input[type=range] { width:100%; accent-color:#19b6e8; }
   #panel .val { color:#e9e6df; }
   #panel .hint { margin-top:.8rem; color:#6b6e7a; font-size:.66rem; line-height:1.5; }
-  #menu {
-    position:fixed; top:1rem; left:1rem; z-index:15; display:none; gap:.5rem;
-  }
-  #menu.on { display:flex; }
-  #menu button {
-    background:rgba(10,12,18,.82); border:1px solid #23262f; color:#cdccc4;
-    font-family:"Georgia",serif; font-size:.85rem; padding:.4rem .8rem; border-radius:4px;
-    cursor:pointer; backdrop-filter:blur(4px);
-  }
-  #menu button:hover { border-color:#454b60; color:#fff; }
 </style>
 </head>
 <body>
-  <!-- Screen 1: Bundesland -->
-  <div id="screen-land" class="screen">
-    <h1>Wähler-Sturm</h1>
-    <p>Wähle dein Bundesland</p>
-    <div id="land-grid" class="grid"></div>
-  </div>
-
-  <!-- Screen 2: Partei -->
-  <div id="screen-party" class="screen">
-    <h1 id="party-title">Wähle deine Partei</h1>
-    <p id="party-sub">Bundestagswahl 2025 · Zweitstimmen</p>
-    <div id="party-grid" class="grid"></div>
-    <button class="back" id="party-back">← anderes Bundesland</button>
-  </div>
-
-  <!-- Sturm-Overlays -->
-  <div id="menu">
-    <button id="menu-land">Bundesland</button>
-    <button id="menu-party">Partei</button>
+  <div id="controls">
+    <select id="sel-land"></select>
+    <select id="sel-party" disabled></select>
   </div>
 
   <div id="panel">
@@ -105,8 +64,8 @@
     <input type="range" id="s-orbit" min="0.5" max="2.0" step="0.05">
     <label>Sphären-Größe: <span class="val" id="v-sphere"></span></label>
     <input type="range" id="s-sphere" min="0.4" max="2.5" step="0.05">
-    <div class="hint">Kern = deine Partei · Sphären drumherum = andere Parteien.
-    Größe ∝ echte Stimmen.</div>
+    <div class="hint">Neutral = alle Stimmen. Bundesland → Parteimix. Partei → dein Kern,
+    andere drumherum. Größe ∝ echte Stimmen.</div>
   </div>
 
   <div id="cap"><div class="big"></div><div class="sub"></div></div>
