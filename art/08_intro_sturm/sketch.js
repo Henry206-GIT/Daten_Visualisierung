@@ -17,11 +17,13 @@ let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
 
 /* ---------- Intro/Flug-Zustand ---------- */
 let appState = 'intro';         // 'intro' | 'flight' | 'app'
-const FLIGHT_MS = 2600;
+const FLY_MS = 3000;            // Partikel fliegt von unten in die Wand
+const ZOOM_MS = 3200;           // Kamera zoomt von der Wand auf Default-Größe raus
+const ZMAX = 4;                 // max. Kamera-Zoom (Sphäre als Partikel-Wand)
 let flightStart = 0;
 let flightFixed = null;         // Test-Hook ?flight=0..1 (eingefrorener Frame)
 let visitorName = '';
-const R_BIG = 150, R_SMALL = 3; // Intro-Partikelradius -> Sphären-Partikelgröße
+const R_BIG = 150;              // Intro-Partikelradius
 const easeIO = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const smooth = (a, b, x) => { x = constrain((x - a) / (b - a), 0, 1); return x * x * (3 - 2 * x); };
 const glyphCache = {};          // label -> normierte Punktwolke [{x,y}]
@@ -243,7 +245,7 @@ function draw() {
   if (appState === 'intro') { drawIntro(); return; }
   if (appState === 'flight') { drawFlight(); return; }
   clearBg(textMode ? 255 : 34);              // App
-  renderPool(1);
+  renderPool(1, 1);
 }
 
 function clearBg(a) { noStroke(); fill(7, 8, 12, a); rect(0, 0, width, height); }
@@ -257,20 +259,29 @@ function drawIntro() {
 }
 
 function drawFlight() {
-  const t = flightFixed !== null ? flightFixed : constrain((millis() - flightStart) / FLIGHT_MS, 0, 1);
-  const e = easeIO(t);
+  const total = FLY_MS + ZOOM_MS;
+  const el = flightFixed !== null ? flightFixed * total : (millis() - flightStart);
+  const cy = height * 0.40;             // Default-Bildschirm-Y des Sphären-Zentrums
+  const ayWall = -height * 0.45;        // Wand sitzt oben; darunter dunkler Raum
+  const wallEdge = height * 0.60;       // ungefähre Unterkante der Wand (Ziel des Partikels)
   clearBg(40);
-  layout();
-  const s = spheres[0];
-  const gA = smooth(0.45, 1.0, t);            // Sphäre blendet ein, während Partikel ankommt
-  if (gA > 0.01) renderPool(gA);
-  const [sx, sy] = introPos();
-  const x = lerp(sx, s.cx, e) + sin(PI * t) * width * 0.12;  // leichte Kurve
-  const y = lerp(sy, s.cy, e);
-  const R = lerp(R_BIG, R_SMALL, e);
-  drawBig(x, y, R, 1);
-  if (visitorName) nameText(visitorName, x, y - R - 16, 1 - t, R);
-  if (flightFixed === null && t >= 1) startApp();
+  if (el < FLY_MS) {
+    // Phase 1: stark reingezoomte Sphäre = Partikel-Wand oben; Partikel steigt von unten hoch
+    renderPool(1, ZMAX, ayWall);
+    const pp = easeIO(el / FLY_MS);
+    const x = width / 2 + sin(el * 0.0025) * 22;
+    const y = lerp(height * 1.08, wallEdge, pp);
+    const R = lerp(70, 18, pp);
+    drawBig(x, y, R, 1);
+    if (visitorName) nameText(visitorName, x, y - R - 18, 0.5 + 0.5 * (1 - pp), R);
+  } else if (el < total) {
+    // Phase 2: Kamera zoomt raus (Wand -> Sphäre) und fährt zur Default-Position
+    const f = easeIO((el - FLY_MS) / ZOOM_MS);
+    renderPool(1, lerp(ZMAX, 1, f), lerp(ayWall, cy, f));
+  } else {
+    if (flightFixed === null) startApp();
+    renderPool(1, 1);
+  }
 }
 
 // großer Glow-Partikel (neutral/weißlich)
@@ -290,9 +301,13 @@ function nameText(txt, x, y, al, R) {
   fill(236, 236, 242, 235 * al); text(txt, x, y);
 }
 
-// Partikel-Pool rendern; gA = globale Deckkraft (Einblenden im Flug)
-function renderPool(gA) {
+// Partikel-Pool rendern; gA = Deckkraft, cz = Kamera-Zoom, ay = Bildschirm-Y des Sphären-Zentrums
+function renderPool(gA, cz, ay) {
   layout();
+  const cx = width / 2, cy = height * (textMode ? 0.44 : 0.40);
+  const ayy = (ay === undefined) ? cy : ay;
+  push();
+  translate(cx, ayy); scale(cz); translate(-cx, -cy);  // z=1 & ay=cy = identisch
   blendMode(textMode ? BLEND : ADD);
   for (const p of parts) {
     if (!p.active) continue;
@@ -327,6 +342,7 @@ function renderPool(gA) {
     }
   }
   blendMode(BLEND);
+  pop();
 }
 
 /* ---------- Caption ---------- */
