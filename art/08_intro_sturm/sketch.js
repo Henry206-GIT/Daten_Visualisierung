@@ -17,7 +17,7 @@ let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
 
 /* ---------- Intro/Flug-Zustand ---------- */
 let appState = 'intro';         // 'intro' | 'flight' | 'app'
-const FLY_MS = 6500;            // Partikel fliegt lange durch dunklen Raum nach oben
+const FLY_MS = 9000;            // langer Aufstieg durch dunklen Raum (Kamera verfolgt Partikel)
 const ZOOM_MS = 3200;           // Kamera zoomt von der Wand auf Default-Größe raus
 const ZMAX = 4;                 // max. Kamera-Zoom (Sphäre als Partikel-Wand)
 let flightStart = 0;
@@ -248,7 +248,7 @@ function draw() {
   if (appState === 'intro') { drawIntro(); return; }
   if (appState === 'flight') { drawFlight(); return; }
   clearBg(textMode ? 255 : 34);              // App
-  renderPool(1, 1);
+  renderPool(1);                             // identische Kamera
 }
 
 function clearBg(a) { noStroke(); fill(7, 8, 12, a); rect(0, 0, width, height); }
@@ -264,28 +264,32 @@ function drawIntro() {
 function drawFlight() {
   const total = FLY_MS + ZOOM_MS;
   const el = flightFixed !== null ? flightFixed * total : (millis() - flightStart);
-  const cy = height * 0.40;             // Default-Bildschirm-Y des Sphären-Zentrums
-  const ayWall = -height * 0.75;        // Wand-Zentrum weit oben; Unterkante nahe Bildschirm-Oberkante
-  const wallEdge = height * 0.30;       // Ziel des Partikels (knapp unter der Wand)
+  const cx = width / 2, cy = height * 0.40;     // Welt-Zentrum der (festen) Sphäre/Wand
+  const R = min(width, height) * 0.23 * params.core;
+  const sy = height * 0.66;                     // Bildschirm-Y, an dem der verfolgte Partikel sitzt
+  const startWY = cy + height * 4.2;            // Partikel-Startpunkt weit unter der Sphäre
+  const endWY = cy + R * 0.85;                  // Endpunkt: an der Unterkante der Wand
   clearBg(40);
   if (el < FLY_MS) {
-    // Phase 1: Partikel steigt lange durch dunklen Raum; Wand blendet erst spät oben ein
-    const pp = el / FLY_MS;
-    const wallA = smooth(0.58, 0.96, pp);          // Wand erscheint erst spät
-    if (wallA > 0.01) renderPool(wallA, ZMAX, ayWall);
-    const e = easeIO(pp);
-    const x = width / 2 + sin(el * 0.0016) * 26;
-    const y = lerp(height * 1.10, wallEdge, e);
-    const R = lerp(72, 18, e);
-    drawBig(x, y, R, 1);
-    if (visitorName) nameText(visitorName, x, y - R - 18, 0.6 + 0.4 * (1 - pp), R);
+    // Aufstieg: Kamera verfolgt den Partikel (fester Zoom). Die feste Wand scrollt von oben
+    // ins Sichtfeld, sobald der Partikel ihr nahe genug kommt.
+    const e = easeIO(el / FLY_MS);
+    const wx = cx + sin(el * 0.0013) * 34;
+    const wy = lerp(startWY, endWY, e);
+    renderPool(1, { z: ZMAX, ax: cx, ay: sy, fx: wx, fy: wy });   // verfolgt Partikel (wx,wy)->Bildschirm(cx,sy)
+    const pr = lerp(70, 18, e);
+    drawBig(cx, sy, pr, 1);                                       // Partikel sitzt fix im Bild
+    if (visitorName) nameText(visitorName, cx, sy - pr - 18, 1, pr);
   } else if (el < total) {
-    // Phase 2: Kamera zoomt raus (Wand -> Sphäre) und fährt zur Default-Position
+    // Kamera zoomt raus und fährt vom Partikel auf das Sphären-Zentrum -> Default (identisch)
     const f = easeIO((el - FLY_MS) / ZOOM_MS);
-    renderPool(1, lerp(ZMAX, 1, f), lerp(ayWall, cy, f));
+    renderPool(1, {
+      z: lerp(ZMAX, 1, f), ax: cx, ay: lerp(sy, cy, f),
+      fx: cx, fy: lerp(endWY, cy, f),
+    });
   } else {
     if (flightFixed === null) startApp();
-    renderPool(1, 1);
+    renderPool(1);
   }
 }
 
@@ -306,13 +310,14 @@ function nameText(txt, x, y, al, R) {
   fill(236, 236, 242, 235 * al); text(txt, x, y);
 }
 
-// Partikel-Pool rendern; gA = Deckkraft, cz = Kamera-Zoom, ay = Bildschirm-Y des Sphären-Zentrums
-function renderPool(gA, cz, ay) {
+// Partikel-Pool rendern; gA = Deckkraft, cam = {z, ax, ay, fx, fy} (Welt-Kamera: Pan + Zoom)
+// Weltpunkt (fx,fy) erscheint bei Bildschirm (ax,ay), z = Zoom. cam weg = identisch.
+function renderPool(gA, cam) {
   layout();
   const cx = width / 2, cy = height * (textMode ? 0.44 : 0.40);
-  const ayy = (ay === undefined) ? cy : ay;
+  const c = cam || { z: 1, ax: cx, ay: cy, fx: cx, fy: cy };
   push();
-  translate(cx, ayy); scale(cz); translate(-cx, -cy);  // z=1 & ay=cy = identisch
+  translate(c.ax, c.ay); scale(c.z); translate(-c.fx, -c.fy);
   blendMode(textMode ? BLEND : ADD);
   for (const p of parts) {
     if (!p.active) continue;
