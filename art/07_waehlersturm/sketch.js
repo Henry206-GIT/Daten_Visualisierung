@@ -16,6 +16,11 @@ let selLand = null, selParty = null;
 let params = { ppp: 2500, core: 1.15, orbit: 1.35, sphere: 0.95 };
 let cap = {};
 let firstLayout = true;         // erster Aufbau: Positionen direkt setzen (sonst morphen)
+let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
+const glyphCache = {};          // label -> normierte Punktwolke [{x,y}]
+// Voller Parteiname -> kurzes Kürzel für die Buchstaben-Form
+const KUERZEL = { 'Die Linke': 'LINKE', 'GRÜNE': 'GRÜNE' };
+function kuerzel(party) { return party ? (KUERZEL[party] || party) : 'DE'; }
 
 function preload() { DATA = loadJSON('../data.json'); }
 
@@ -41,6 +46,11 @@ function setup() {
     selLand = L; document.getElementById('sel-land').value = L; updatePartyOptions(L);
     if (P && getLand(L).votes[P]) { selParty = P; document.getElementById('sel-party').value = P; }
   }
+  if (q.get('text')) {
+    textMode = true;
+    const t = document.getElementById('toggle-text');
+    t.classList.add('on'); t.textContent = 'Kürzel: an';
+  }
   rebuild();
   background(7, 8, 12);
 }
@@ -51,6 +61,26 @@ function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 2
 function partiesOf(land) { return Object.entries(getLand(land).votes).sort((a, b) => b[1] - a[1]); }
 function sumVotes(o) { return Object.values(o).reduce((a, b) => a + b, 0); }
 function fmt(n) { return Math.round(n).toLocaleString('de-DE'); }
+
+// Buchstaben-Form -> normierte Punktwolke (zentriert, Höhe ~1). Einmal je Label gecacht.
+function glyphPoints(label) {
+  if (glyphCache[label]) return glyphCache[label];
+  const w = 640, h = 256, g = createGraphics(w, h);
+  g.pixelDensity(1); g.background(0); g.fill(255); g.noStroke();
+  g.textAlign(CENTER, CENTER); g.textStyle(BOLD); g.textSize(170);
+  g.text(label, w / 2, h / 2);
+  g.loadPixels();
+  const pts = [], step = 3;
+  for (let y = 0; y < h; y += step)
+    for (let x = 0; x < w; x += step)
+      if (g.pixels[4 * (y * w + x)] > 128) pts.push({ x, y });
+  let mx = 0, my = 0; pts.forEach(p => { mx += p.x; my += p.y; });
+  mx /= pts.length || 1; my /= pts.length || 1;
+  const norm = pts.map(p => ({ x: (p.x - mx) / h, y: (p.y - my) / h }));
+  g.remove();
+  glyphCache[label] = norm.length ? norm : [{ x: 0, y: 0 }];
+  return glyphCache[label];
+}
 
 /* ---------- Dropdowns ---------- */
 function buildLandSelect() {
@@ -81,6 +111,11 @@ function wireUI() {
   });
   document.getElementById('sel-party').addEventListener('change', e => {
     selParty = e.target.value || null; rebuild();
+  });
+  document.getElementById('toggle-text').addEventListener('click', e => {
+    textMode = !textMode;
+    e.target.classList.toggle('on', textMode);
+    e.target.textContent = textMode ? 'Kürzel: an' : 'Kürzel: aus';
   });
   const bind = (id, key, f, realloc) => {
     const s = document.getElementById(id), vEl = document.getElementById('v-' + id.replace('s-', ''));
@@ -124,6 +159,7 @@ function rebuild() {
       const p = parts[k];
       p.active = true; p.sIdx = si; p.isCore = s.isCore; p.b = b;
       p.tcol = s.col; p.ang = random(TWO_PI); p.rad = sqrt(random());
+      p.pIdx = c;                 // Position innerhalb der Sphäre (für Buchstaben-Punkt)
     }
   }
   for (; k < MAXP; k++) parts[k].active = false;
@@ -131,7 +167,12 @@ function rebuild() {
     layout();
     for (const p of parts) if (p.active) {
       const s = spheres[p.sIdx];
-      p.x = s.cx + cos(p.ang) * p.rad * s.R; p.y = s.cy + sin(p.ang) * p.rad * s.R;
+      if (textMode) {
+        const cloud = glyphPoints(kuerzel(s.party)), pt = cloud[p.pIdx % cloud.length], sc = s.R * 3.0;
+        p.x = s.cx + pt.x * sc; p.y = s.cy + pt.y * sc;
+      } else {
+        p.x = s.cx + cos(p.ang) * p.rad * s.R; p.y = s.cy + sin(p.ang) * p.rad * s.R;
+      }
       p.vx = p.vy = 0; p.col = p.tcol.slice();
     }
     firstLayout = false;
@@ -174,13 +215,22 @@ function draw() {
   for (const p of parts) {
     if (!p.active) continue;
     const s = spheres[p.sIdx];
-    const aRot = frameCount * (p.isCore ? 0.004 : 0.002);
-    const tx = s.cx + cos(p.ang + aRot) * p.rad * s.R;
-    const ty = s.cy + sin(p.ang + aRot) * p.rad * s.R;
-    const stiff = p.isCore ? 0.05 : 0.04;
+    let tx, ty, stiff, nf;
+    if (textMode) {                          // Partikel formen das Partei-Kürzel
+      const cloud = glyphPoints(kuerzel(s.party));
+      const pt = cloud[p.pIdx % cloud.length];
+      const sc = s.R * 3.0;                   // Schrifthöhe ~1.7·R
+      tx = s.cx + pt.x * sc; ty = s.cy + pt.y * sc;
+      stiff = 0.08; nf = 0.08;                // schneller, ruhiger -> lesbar
+    } else {                                  // Scheibe (Sphäre)
+      const aRot = frameCount * (p.isCore ? 0.004 : 0.002);
+      tx = s.cx + cos(p.ang + aRot) * p.rad * s.R;
+      ty = s.cy + sin(p.ang + aRot) * p.rad * s.R;
+      stiff = p.isCore ? 0.05 : 0.04; nf = 0.3;
+    }
     p.vx += (tx - p.x) * stiff; p.vy += (ty - p.y) * stiff;
     const nA = noise(p.x * 0.0013, p.y * 0.0013, frameCount * 0.003 + p.jitter) * TWO_PI * 2;
-    p.vx += cos(nA) * 0.3; p.vy += sin(nA) * 0.3;
+    p.vx += cos(nA) * nf; p.vy += sin(nA) * nf;
     p.vx *= 0.82; p.vy *= 0.82; p.x += p.vx; p.y += p.vy;
     // Farbe sanft überblenden
     p.col[0] += (p.tcol[0] - p.col[0]) * 0.07;
