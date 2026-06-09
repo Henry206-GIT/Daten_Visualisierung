@@ -82,6 +82,15 @@
     font-family:"Georgia",serif; font-size:1.1rem; padding:.72rem 1.7rem; border-radius:6px; cursor:pointer;
   }
   #intro button:hover { background:#173042; }
+
+  /* ---- Replay (Intro neu starten, immer sichtbar) ---- */
+  #replay {
+    position:fixed; bottom:1rem; right:1rem; z-index:30;
+    background:rgba(10,12,18,.85); border:1px solid #2a2e3a; color:#9aa0ad;
+    font-family:"Georgia",serif; font-size:.85rem; padding:.45rem .9rem; border-radius:5px;
+    cursor:pointer; backdrop-filter:blur(4px);
+  }
+  #replay:hover { border-color:#454b60; color:#e9e6df; }
 </style>
 </head>
 <body class="intro">
@@ -117,6 +126,7 @@
   </div>
 
   <div id="cap"><div class="big"></div><div class="sub"></div></div>
+  <button id="replay">↻ Intro neu</button>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
   <script src="sketch.js"></script>

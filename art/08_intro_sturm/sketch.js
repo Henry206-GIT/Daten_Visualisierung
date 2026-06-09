@@ -17,7 +17,7 @@ let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
 
 /* ---------- Intro/Flug-Zustand ---------- */
 let appState = 'intro';         // 'intro' | 'flight' | 'app'
-const FLY_MS = 3000;            // Partikel fliegt von unten in die Wand
+const FLY_MS = 6500;            // Partikel fliegt lange durch dunklen Raum nach oben
 const ZOOM_MS = 3200;           // Kamera zoomt von der Wand auf Default-Größe raus
 const ZMAX = 4;                 // max. Kamera-Zoom (Sphäre als Partikel-Wand)
 let flightStart = 0;
@@ -71,6 +71,9 @@ function wireIntro() {
   document.getElementById('start-btn').addEventListener('click', start);
   document.getElementById('name-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') start();
+  });
+  document.getElementById('replay').addEventListener('click', () => {  // Sequenz neu (Test)
+    flightFixed = null; appState = 'intro'; setBody('intro');
   });
 }
 
@@ -262,18 +265,20 @@ function drawFlight() {
   const total = FLY_MS + ZOOM_MS;
   const el = flightFixed !== null ? flightFixed * total : (millis() - flightStart);
   const cy = height * 0.40;             // Default-Bildschirm-Y des Sphären-Zentrums
-  const ayWall = -height * 0.45;        // Wand sitzt oben; darunter dunkler Raum
-  const wallEdge = height * 0.60;       // ungefähre Unterkante der Wand (Ziel des Partikels)
+  const ayWall = -height * 0.75;        // Wand-Zentrum weit oben; Unterkante nahe Bildschirm-Oberkante
+  const wallEdge = height * 0.30;       // Ziel des Partikels (knapp unter der Wand)
   clearBg(40);
   if (el < FLY_MS) {
-    // Phase 1: stark reingezoomte Sphäre = Partikel-Wand oben; Partikel steigt von unten hoch
-    renderPool(1, ZMAX, ayWall);
-    const pp = easeIO(el / FLY_MS);
-    const x = width / 2 + sin(el * 0.0025) * 22;
-    const y = lerp(height * 1.08, wallEdge, pp);
-    const R = lerp(70, 18, pp);
+    // Phase 1: Partikel steigt lange durch dunklen Raum; Wand blendet erst spät oben ein
+    const pp = el / FLY_MS;
+    const wallA = smooth(0.58, 0.96, pp);          // Wand erscheint erst spät
+    if (wallA > 0.01) renderPool(wallA, ZMAX, ayWall);
+    const e = easeIO(pp);
+    const x = width / 2 + sin(el * 0.0016) * 26;
+    const y = lerp(height * 1.10, wallEdge, e);
+    const R = lerp(72, 18, e);
     drawBig(x, y, R, 1);
-    if (visitorName) nameText(visitorName, x, y - R - 18, 0.5 + 0.5 * (1 - pp), R);
+    if (visitorName) nameText(visitorName, x, y - R - 18, 0.6 + 0.4 * (1 - pp), R);
   } else if (el < total) {
     // Phase 2: Kamera zoomt raus (Wand -> Sphäre) und fährt zur Default-Position
     const f = easeIO((el - FLY_MS) / ZOOM_MS);
