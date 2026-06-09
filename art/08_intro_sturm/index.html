@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Dein Partikel — Wähler-Sturm</title>
 <style>
   :root { --bg:#07080c; --fg:#e9e6df; --dim:#8a8d98; }
@@ -128,7 +131,17 @@
   <div id="cap"><div class="big"></div><div class="sub"></div></div>
   <button id="replay">↻ Intro neu</button>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
-  <script src="sketch.js"></script>
+  <!-- sketch.js immer frisch laden (Cache-Buster), p5 danach, damit setup() schon existiert -->
+  <script>
+    (function () {
+      function load(src, onload) {
+        var s = document.createElement('script');
+        s.src = src; s.onload = onload; document.head.appendChild(s);
+      }
+      load('sketch.js?v=' + Date.now(), function () {
+        load('https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js');
+      });
+    })();
+  </script>
 </body>
 </html>
