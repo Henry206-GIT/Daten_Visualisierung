@@ -45,6 +45,35 @@ def beteiligung(df, region):
     return round(float(sub.iloc[0].wert), 2) if len(sub) else None
 
 
+def votes_from_kerg2():
+    """Absolute Zweitstimmen je Region+Partei aus Roh-kerg2 (Anzahl, Stimme==2)."""
+    import csv
+    import io
+    raw = config.RAW / "kerg2.csv"
+    txt = raw.read_text(encoding="utf-8-sig")
+    lines = txt.splitlines()
+    start = next(i for i, l in enumerate(lines) if l.startswith("Wahlart;"))
+    reader = csv.DictReader(io.StringIO("\n".join(lines[start:])), delimiter=";")
+    out = {}   # region -> {party: votes}
+    for rec in reader:
+        if rec.get("Gebietsart") not in ("Bund", "Land"):
+            continue
+        if rec.get("Gruppenart") != "Partei" or rec.get("Stimme") != "2":
+            continue
+        party = (rec.get("Gruppenname") or "").strip()
+        if party not in HAUPT:
+            continue
+        region = rec.get("Gebietsname") or ""
+        if region == "Bundesgebiet":
+            region = "Deutschland"
+        try:
+            n = int((rec.get("Anzahl") or "").strip())
+        except ValueError:
+            continue
+        out.setdefault(region, {})[party] = n
+    return out
+
+
 def main():
     df = pd.concat(
         [pd.read_csv(p) for p in sorted(config.PROCESSED.glob("*.csv"))],
@@ -53,6 +82,7 @@ def main():
 
     bund_shares = shares(df, "Deutschland")
     parteien = sorted(bund_shares, key=lambda p: -bund_shares[p])
+    votes = votes_from_kerg2()
 
     laender = []
     land_df = df[df.region_typ == "land"]
@@ -61,6 +91,7 @@ def main():
             "name": name,
             "beteiligung": beteiligung(df, name),
             "shares": shares(df, name),
+            "votes": votes.get(name, {}),
         })
 
     vt = df[(df.indikator == "vertrauen_allgemein") & (df.gruppe == "gesamt")]
@@ -76,7 +107,8 @@ def main():
         "farben": FARBEN,
         "bund": {"name": "Deutschland",
                  "beteiligung": beteiligung(df, "Deutschland"),
-                 "shares": bund_shares},
+                 "shares": bund_shares,
+                 "votes": votes.get("Deutschland", {})},
         "laender": laender,
         "vertrauen": vertrauen,
         "vertrauen_alter": vertrauen_alter,
