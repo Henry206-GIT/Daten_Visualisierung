@@ -7,13 +7,13 @@
      - Felder geleert      → wieder neutral.
    Partikelmenge ∝ echte Zweitstimmen (BTW 2025). 1 Partikel = einstellbare Menschen.        */
 
-const MAXP = 7000;
+const MAXP = 16000;
 const GREY = [150, 150, 158];
 let DATA, FARBEN;
 let parts = [];                 // Pool
 let spheres = [];               // {party, votes, n, col, isCore}
 let selLand = null, selParty = null;
-let params = { ppp: 2500, core: 1.15, orbit: 1.35, sphere: 0.95 };
+let params = { ppp: 1200, core: 1.15, orbit: 1.35, sphere: 0.95 };
 let cap = {};
 let firstLayout = true;         // erster Aufbau: Positionen direkt setzen (sonst morphen)
 let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
@@ -65,12 +65,12 @@ function fmt(n) { return Math.round(n).toLocaleString('de-DE'); }
 // Buchstaben-Form -> normierte Punktwolke (zentriert, Höhe ~1). Einmal je Label gecacht.
 function glyphPoints(label) {
   if (glyphCache[label]) return glyphCache[label];
-  const w = 640, h = 256, g = createGraphics(w, h);
+  const w = 1100, h = 360, g = createGraphics(w, h);
   g.pixelDensity(1); g.background(0); g.fill(255); g.noStroke();
-  g.textAlign(CENTER, CENTER); g.textStyle(BOLD); g.textSize(170);
+  g.textAlign(CENTER, CENTER); g.textStyle(BOLD); g.textSize(250);
   g.text(label, w / 2, h / 2);
   g.loadPixels();
-  const pts = [], step = 3;
+  const pts = [], step = 2;
   for (let y = 0; y < h; y += step)
     for (let x = 0; x < w; x += step)
       if (g.pixels[4 * (y * w + x)] > 128) pts.push({ x, y });
@@ -80,6 +80,14 @@ function glyphPoints(label) {
   g.remove();
   glyphCache[label] = norm.length ? norm : [{ x: 0, y: 0 }];
   return glyphCache[label];
+}
+
+// Zielpunkt eines Partikels im Buchstaben — gleichmäßig über die ganze Glyphe verteilt
+function glyphTarget(p, s) {
+  const cloud = glyphPoints(kuerzel(s.party));
+  const i = Math.min(cloud.length - 1, Math.floor((p.pIdx / Math.max(1, p.sphN)) * cloud.length));
+  const pt = cloud[i], sc = s.R * 2.2;
+  return [s.cx + pt.x * sc, s.cy + pt.y * sc];
 }
 
 /* ---------- Dropdowns ---------- */
@@ -159,7 +167,7 @@ function rebuild() {
       const p = parts[k];
       p.active = true; p.sIdx = si; p.isCore = s.isCore; p.b = b;
       p.tcol = s.col; p.ang = random(TWO_PI); p.rad = sqrt(random());
-      p.pIdx = c;                 // Position innerhalb der Sphäre (für Buchstaben-Punkt)
+      p.pIdx = c; p.sphN = s.n;   // Position + Größe der Sphäre (gleichmäßige Buchstaben-Verteilung)
     }
   }
   for (; k < MAXP; k++) parts[k].active = false;
@@ -168,8 +176,7 @@ function rebuild() {
     for (const p of parts) if (p.active) {
       const s = spheres[p.sIdx];
       if (textMode) {
-        const cloud = glyphPoints(kuerzel(s.party)), pt = cloud[p.pIdx % cloud.length], sc = s.R * 3.0;
-        p.x = s.cx + pt.x * sc; p.y = s.cy + pt.y * sc;
+        const t = glyphTarget(p, s); p.x = t[0]; p.y = t[1];
       } else {
         p.x = s.cx + cos(p.ang) * p.rad * s.R; p.y = s.cy + sin(p.ang) * p.rad * s.R;
       }
@@ -182,13 +189,17 @@ function rebuild() {
 
 /* ---------- Geometrie je Frame ---------- */
 function layout() {
-  const md = min(width, height), cx = width / 2, cy = height * 0.40;
-  const unit = md * 0.0045, orbitR = md * 0.30 * params.orbit;
+  const md = min(width, height), cx = width / 2;
+  // Text-Modus: kompakter (enger Ring, kleinere Sphären, höher), damit Kürzel ganz reinpassen
+  const cy = height * (textMode ? 0.44 : 0.40);
+  const oMul = textMode ? 0.72 : 1.0;
+  const rMax = md * (textMode ? 0.12 : 0.16);
+  const unit = md * 0.0045, orbitR = md * 0.30 * params.orbit * oMul;
   const rot = millis() * 0.00004;
 
   if (!selLand) {                                     // NEUTRAL: ein zentraler Blob
     const s = spheres[0];
-    s.R = md * 0.23 * params.core; s.cx = cx; s.cy = cy;
+    s.R = md * (textMode ? 0.20 : 0.23) * params.core; s.cx = cx; s.cy = cy;
     return;
   }
   // Bundesland gewählt: Kern (falls Partei) zentral, andere Parteien auf einem Ring
@@ -196,10 +207,10 @@ function layout() {
   let oi = 0;
   spheres.forEach(s => {
     if (s.isCore) {
-      s.R = constrain(unit * Math.sqrt(s.n) * params.core, md * 0.02, md * 0.16);
+      s.R = constrain(unit * Math.sqrt(s.n) * params.core, md * 0.02, rMax);
       s.cx = cx; s.cy = cy;
     } else {
-      s.R = constrain(unit * Math.sqrt(s.n) * params.sphere, md * 0.015, md * 0.16);
+      s.R = constrain(unit * Math.sqrt(s.n) * params.sphere, md * 0.015, rMax);
       const a = -HALF_PI + (oi / k) * TWO_PI + rot; oi++;
       s.cx = cx + cos(a) * orbitR; s.cy = cy + sin(a) * orbitR;
     }
@@ -209,19 +220,17 @@ function layout() {
 /* ---------- Draw ---------- */
 function draw() {
   noStroke();
-  fill(7, 8, 12, 34); rect(0, 0, width, height);
+  // Text-Modus: voller Clear (keine Schlieren) -> scharfe Buchstaben
+  fill(7, 8, 12, textMode ? 255 : 34); rect(0, 0, width, height);
   layout();
-  blendMode(ADD);
+  blendMode(textMode ? BLEND : ADD);          // BLEND = solide, kein Glow-Verwischen
   for (const p of parts) {
     if (!p.active) continue;
     const s = spheres[p.sIdx];
     let tx, ty, stiff, nf;
     if (textMode) {                          // Partikel formen das Partei-Kürzel
-      const cloud = glyphPoints(kuerzel(s.party));
-      const pt = cloud[p.pIdx % cloud.length];
-      const sc = s.R * 3.0;                   // Schrifthöhe ~1.7·R
-      tx = s.cx + pt.x * sc; ty = s.cy + pt.y * sc;
-      stiff = 0.08; nf = 0.08;                // schneller, ruhiger -> lesbar
+      const t = glyphTarget(p, s); tx = t[0]; ty = t[1];
+      stiff = 0.11; nf = 0.03;                // straff + ruhig -> lesbar
     } else {                                  // Scheibe (Sphäre)
       const aRot = frameCount * (p.isCore ? 0.004 : 0.002);
       tx = s.cx + cos(p.ang + aRot) * p.rad * s.R;
@@ -238,9 +247,15 @@ function draw() {
     p.col[2] += (p.tcol[2] - p.col[2]) * 0.07;
 
     const c = p.col, kk = p.sizeK, b = p.b;
-    fill(c[0], c[1], c[2], 13 * b); circle(p.x, p.y, (p.isCore ? 17 : 12) * kk);
-    fill(c[0], c[1], c[2], 48 * b); circle(p.x, p.y, (p.isCore ? 6.5 : 3.2) * kk);
-    if (p.isCore) { fill(c[0], c[1], c[2], 110); circle(p.x, p.y, 2.6 * kk); }
+    if (textMode) {                          // scharfer, mit Sphärengröße skalierter Punkt
+      const dr = constrain(s.R * 0.06, 1.6, 8);
+      fill(c[0], c[1], c[2], 120); circle(p.x, p.y, dr * 1.7);
+      fill(c[0], c[1], c[2], 255); circle(p.x, p.y, dr);
+    } else {                                  // weicher Glow
+      fill(c[0], c[1], c[2], 13 * b); circle(p.x, p.y, (p.isCore ? 17 : 12) * kk);
+      fill(c[0], c[1], c[2], 48 * b); circle(p.x, p.y, (p.isCore ? 6.5 : 3.2) * kk);
+      if (p.isCore) { fill(c[0], c[1], c[2], 110); circle(p.x, p.y, 2.6 * kk); }
+    }
   }
   blendMode(BLEND);
 }
