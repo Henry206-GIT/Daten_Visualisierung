@@ -23,7 +23,8 @@ const ZMAX = 4;                 // max. Kamera-Zoom (Sphäre als Partikel-Wand)
 let flightStart = 0;
 let flightFixed = null;         // Test-Hook ?flight=0..1 (eingefrorener Frame)
 let visitorName = '';
-const R_BIG = 150;              // Intro-Partikelradius
+let dust = [];                 // Geschwindigkeits-Streifen im Flug
+const R_BIG = 150;             // Intro-Partikelradius
 const easeIO = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const smooth = (a, b, x) => { x = constrain((x - a) / (b - a), 0, 1); return x * x * (3 - 2 * x); };
 const glyphCache = {};          // label -> normierte Punktwolke [{x,y}]
@@ -42,6 +43,9 @@ function setup() {
                  sIdx: 0, col: GREY.slice(), tcol: GREY.slice(),
                  isCore: false, b: 0.6, jitter: random(1000),
                  sizeK: random(0.7, 1.4), active: false });
+
+  for (let i = 0; i < 170; i++)         // Geschwindigkeits-Streifen (vorbeiziehender Staub)
+    dust.push({ x: random(width), y: random(height), len: random(28, 120), spd: random(0.6, 1.7) });
 
   cap.big = document.querySelector('#cap .big');
   cap.sub = document.querySelector('#cap .sub');
@@ -273,11 +277,15 @@ function drawFlight() {
   if (el < FLY_MS) {
     // Aufstieg: Kamera verfolgt den Partikel (fester Zoom). Die feste Wand scrollt von oben
     // ins Sichtfeld, sobald der Partikel ihr nahe genug kommt.
-    const e = easeIO(el / FLY_MS);
+    const pp = el / FLY_MS;
+    const e = easeIO(pp);
+    const v = 1 - Math.abs(2 * pp - 1);                          // Geschwindigkeit (Spitze in der Mitte)
     const wx = cx + sin(el * 0.0013) * 34;
     const wy = lerp(startWY, endWY, e);
     renderPool(1, { z: ZMAX, ax: cx, ay: sy, fx: wx, fy: wy });   // verfolgt Partikel (wx,wy)->Bildschirm(cx,sy)
+    drawDust(0.45 + 0.9 * v);                                    // vorbeiziehende Streifen = Bewegung
     const pr = lerp(70, 18, e);
+    drawTail(cx, sy, 40 + 170 * v, pr);                          // Flug-Schweif nach unten
     drawBig(cx, sy, pr, 1);                                       // Partikel sitzt fix im Bild
     if (visitorName) nameText(visitorName, cx, sy - pr - 18, 1, pr);
   } else if (el < total) {
@@ -287,6 +295,7 @@ function drawFlight() {
       z: lerp(ZMAX, 1, f), ax: cx, ay: lerp(sy, cy, f),
       fx: cx, fy: lerp(endWY, cy, f),
     });
+    drawDust(0.5 * (1 - f));                                     // Streifen klingen aus
   } else {
     if (flightFixed === null) startApp();
     renderPool(1);
@@ -300,6 +309,36 @@ function drawBig(x, y, R, al) {
   fill(212, 216, 226, 42 * al); circle(x, y, R * 1.25);
   fill(244, 246, 250, 150 * al); circle(x, y, R * 0.55);
   fill(255, 255, 255, 235 * al); circle(x, y, R * 0.22);
+  blendMode(BLEND);
+}
+
+// vorbeiziehende Geschwindigkeits-Streifen (streamen nach unten = Aufwärtsbewegung)
+function drawDust(intensity) {
+  const base = 26 * intensity;
+  blendMode(ADD);
+  strokeCap(ROUND);
+  for (const d of dust) {
+    d.y += base * (0.4 + d.spd);
+    if (d.y - d.len > height) { d.y = -random(60); d.x = random(width); }
+    const L = d.len * (0.45 + 0.9 * intensity);
+    stroke(205, 210, 224, 95 * intensity);
+    strokeWeight(1.5);
+    line(d.x, d.y, d.x, d.y - L);
+  }
+  noStroke(); blendMode(BLEND);
+}
+
+// Flug-Schweif: Komet-Schweif nach unten (woher der Partikel kam)
+function drawTail(x, y, len, R) {
+  blendMode(ADD); noStroke();
+  const steps = 16;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const rad = lerp(R * 0.75, 1.4, t);
+    const a = 95 * (1 - t) * (1 - t);
+    fill(236, 240, 248, a);
+    circle(x + sin(frameCount * 0.25 + t * 3.5) * 5 * t, y + t * len, rad);
+  }
   blendMode(BLEND);
 }
 
