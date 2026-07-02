@@ -21,11 +21,12 @@
   const easeIO = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
   // ---------- Daten laden ----------
-  const [world, laenderGeo, data, plzMap] = await Promise.all([
+  const [world, laenderGeo, data, plzMap, wkList] = await Promise.all([
     fetch('world.geojson').then(r => r.json()),
     fetch('../geo_bundeslaender.json').then(r => r.json()),
     fetch('../data.json').then(r => r.json()),
     fetch('plz.json').then(r => r.json()),
+    fetch('wk.json').then(r => r.json()), // 299 Wahlkreise: [lat, lng, {Partei: Zweitstimmen}]
   ]);
 
   const landByName = {};
@@ -195,25 +196,36 @@
     `${filter.age === 'Alle' ? 'alle Altersgruppen' : filter.age + ' Jahre'} · ` +
     `${filter.party === 'Alle' ? 'alle Parteien' : filter.party}`;
 
-  // Heat-Basisraster: jeder PLZ-Ort wird ein Punkt, Gewicht = Länder-Stimmen des Filters
-  // verteilt auf die PLZ des Landes × Altersgruppen-Anteil. PLZ-Dichte ≈ Bevölkerungsdichte
-  // → Städte werden heiß, ganz Deutschland ist bedeckt.
-  const plzCountByLand = {};
-  for (const e of Object.values(plzMap))
-    plzCountByLand[e[3]] = (plzCountByLand[e[3]] || 0) + 1;
+  // Heat-Basisraster: jeder PLZ-Ort wird ein Punkt. Gewicht = echte Zweitstimmen seines
+  // WAHLKREISES (amtlich, kerg2/Bundeswahlleiterin) verteilt auf die PLZ des Wahlkreises
+  // × Altersgruppen-Anteil. 299 Wahlkreise → echte Unterschiede unterhalb der Länder;
+  // PLZ-Dichte ≈ Bevölkerungsdichte → Städte werden heiß.
+  const plzList = Object.values(plzMap);
+  const wkSum = wkList.map(w => Object.values(w[2]).reduce((s, v) => s + v, 0));
+  const COSD = Math.cos(51 * Math.PI / 180);
+  const plzWk = plzList.map(e => {
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < wkList.length; i++) {
+      const dy = wkList[i][0] - e[0], dx = (wkList[i][1] - e[1]) * COSD;
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  });
+  const plzCountByWk = new Array(wkList.length).fill(0);
+  for (const i of plzWk) plzCountByWk[i]++;
+
   const bracketShare = label =>
     label === 'Alle' ? 1 : (BRACKETS.find(b => b.label === label) || { w: 0.15 }).w;
 
   function buildHeatData() {
     const ageShare = bracketShare(filter.age);
     const pts = [];
-    for (const e of Object.values(plzMap)) {
-      const land = landByName[e[3]];
-      if (!land) continue;
-      const votes = filter.party === 'Alle'
-        ? Object.values(land.votes).reduce((s, v) => s + v, 0)
-        : (land.votes[filter.party] || 0);
-      const w = votes * ageShare / plzCountByLand[e[3]];
+    for (let i = 0; i < plzList.length; i++) {
+      const e = plzList[i];
+      const wk = plzWk[i];
+      const votes = filter.party === 'Alle' ? wkSum[wk] : (wkList[wk][2][filter.party] || 0);
+      const w = votes * ageShare / plzCountByWk[wk];
       if (w > 0) pts.push({ lat: e[0], lng: e[1], w });
     }
     return pts;
@@ -224,9 +236,12 @@
     if (detailLand) renderDetail(detailLand);
   }
 
-  // ---------- Hologramm-Heat-Layer: instanzierte Quadrate mit Zoom-LOD ----------
-  // Eigenes InstancedMesh statt hexBin: Quadrate, Hover-Anhebung, Aufloesung folgt Zoom.
-  const heat = { opacity: 0.55, density: 1, relief: 1 };
+  // ---------- Hologramm-Heat-Layer: lückenloses Hex-Gitter mit KDE + Zoom-LOD ----------
+  // Hex-Gitter über ganz Deutschland; Wert je Zelle = Kernel-Dichte aller PLZ-Punkte
+  // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
+  const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35 };
+  const DE_BBOX = { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
+  const CELL_CAP = 18000;
   const DEG = Math.PI / 180;
   const R = globe.getGlobeRadius ? globe.getGlobeRadius() : 100;
   const UNIT = R * DEG;                    // Weltlaenge von 1° Breite
@@ -240,38 +255,65 @@
 
   function cellSizeDeg() {
     const alt = globe.pointOfView().altitude;
-    return Math.max(0.03, Math.min(0.7, alt * 0.3)) / heat.density;
+    let s = Math.max(0.045, Math.min(0.7, alt * 0.3)) / heat.density;
+    // harte Obergrenze für Zellzahl (KDE + InstancedMesh)
+    const est = ((DE_BBOX.n - DE_BBOX.s) / (s * 0.866)) * ((DE_BBOX.e - DE_BBOX.w) / (s / LNG_COS));
+    if (est > CELL_CAP) s *= Math.sqrt(est / CELL_CAP);
+    return s;
   }
 
+  // Hex-Gitter über die Deutschland-BBox; Zellwert = gaußsche Kernel-Dichte der PLZ-Punkte.
+  // Zellen ohne PLZ in Reichweite (Meer/Ausland) entfallen — Inland bleibt lückenlos.
   function binCells(sizeDeg) {
     const pts = buildHeatData();
     heatCap = calcCap(pts);
     for (const v of loadVisitors().map(visitorPoint).filter(matchesFilter))
       pts.push({ lat: v.lat, lng: v.lng, w: heatCap * 0.6 });
-    const lngStep = sizeDeg / LNG_COS;
-    const bins = new Map(); let max = 0;
+
+    const sigma = Math.max(0.05, sizeDeg * heat.smooth);
+    const cut = sigma * 2.5, cut2 = cut * cut, inv2s2 = 1 / (2 * sigma * sigma);
+    const hash = new Map();
     for (const p of pts) {
-      const iy = Math.floor(p.lat / sizeDeg), ix = Math.floor(p.lng / lngStep);
-      const k = iy + '|' + ix;
-      const b = bins.get(k) || { lat: (iy + 0.5) * sizeDeg, lng: (ix + 0.5) * lngStep, w: 0 };
-      b.w += p.w; bins.set(k, b); if (b.w > max) max = b.w;
+      const k = Math.floor(p.lat / cut) + '|' + Math.floor((p.lng * LNG_COS) / cut);
+      (hash.get(k) || hash.set(k, []).get(k)).push(p);
     }
-    const cells = [];
-    for (const b of bins.values())
-      cells.push({ lat: b.lat, lng: b.lng, t: Math.pow(Math.min(1, b.w / max), 0.35), sizeDeg });
+
+    const lngPitch = sizeDeg / LNG_COS, rowH = sizeDeg * 0.866;
+    const cells = []; let max = 0;
+    let row = 0;
+    for (let lat = DE_BBOX.s; lat <= DE_BBOX.n; lat += rowH, row++) {
+      const off = (row % 2) ? lngPitch / 2 : 0;
+      for (let lng = DE_BBOX.w + off; lng <= DE_BBOX.e; lng += lngPitch) {
+        const hy = Math.floor(lat / cut), hx = Math.floor((lng * LNG_COS) / cut);
+        let v = 0;
+        for (let iy = hy - 1; iy <= hy + 1; iy++)
+          for (let ix = hx - 1; ix <= hx + 1; ix++) {
+            const arr = hash.get(iy + '|' + ix);
+            if (!arr) continue;
+            for (const p of arr) {
+              const dy = p.lat - lat, dx = (p.lng - lng) * LNG_COS;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < cut2) v += p.w * Math.exp(-d2 * inv2s2);
+            }
+          }
+        if (v > 0) { cells.push({ lat, lng, v, sizeDeg }); if (v > max) max = v; }
+      }
+    }
+    for (const c of cells) c.t = Math.pow(Math.min(1, c.v / max), heat.contrast);
     return cells;
   }
 
   function cellMatrix(o, c, elevate) {
-    const wSide = c.sizeDeg * UNIT * 0.86; // kleine Fuge zwischen den Quadraten
+    // Hex-Umkreisradius: Nachbarabstand / √3, kleine Fuge
+    const rHex = c.sizeDeg * UNIT * 0.577 * 0.94;
     // Hoehe proportional zur Zellgroesse — sonst werden Zellen beim Reinzoomen zu Spikes
-    const h = wSide * (0.2 + c.t * 2.2 * heat.relief) * elevate;
+    const h = rHex * (0.25 + c.t * 2.6 * heat.relief) * elevate;
     const base = globe.getCoords(c.lat, c.lng, 0.0075); // knapp ueber den Polygon-Caps (0.006)
     const r = Math.hypot(base.x, base.y, base.z);
     const f = (r + h / 2) / r;
     o.position.set(base.x * f, base.y * f, base.z * f);
     o.lookAt(0, 0, 0);
-    o.scale.set(wSide, wSide, Math.max(wSide * 0.1, h));
+    o.scale.set(rHex, rHex, Math.max(rHex * 0.1, h));
     o.updateMatrix();
     return o.matrix;
   }
@@ -300,7 +342,8 @@
       heatMesh.geometry.dispose();
       heatMesh.material.dispose();
     }
-    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 6); // sechseckiges Prisma
+    geo.rotateX(Math.PI / 2); // Achse radial zur Kugel ausrichten
     const mat = new THREE.MeshBasicMaterial({
       transparent: true, opacity: heat.opacity,
       depthWrite: false, blending: THREE.AdditiveBlending,
@@ -369,6 +412,8 @@
   bindSlider('s-opacity', v => { heat.opacity = v; if (heatMesh) heatMesh.material.opacity = v; });
   bindSlider('s-density', v => { heat.density = v; rebuildHeat(); });
   bindSlider('s-relief', v => { heat.relief = v; layoutHeat(); });
+  bindSlider('s-smooth', v => { heat.smooth = v; rebuildHeat(); });
+  bindSlider('s-contrast', v => { heat.contrast = v; rebuildHeat(); });
 
   function mkOpts(id, values, key) {
     const box = document.getElementById(id);
