@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>09 · Dein Ort — Kiosk-Installation</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#000; }
+  body { font-family: Georgia, 'Times New Roman', serif; color:#fff; }
+  #globe { position:fixed; inset:0; }
+
+  /* ---- Phasen-Gating ---- */
+  #survey { opacity:0; pointer-events:none; transition:opacity .9s ease; }
+  body.survey #survey { opacity:1; pointer-events:auto; }
+  #hud { opacity:0; transition:opacity 1.2s ease; pointer-events:none; }
+  body.explore #hud { opacity:1; }
+  #particle { display:none; }
+  body.flight #particle { display:block; }
+
+  /* ---- Umfrage-Overlay ---- */
+  #survey { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.25) 0%, rgba(0,0,0,.72) 100%); }
+  #survey section { display:none; max-width:min(860px, 92vw); }
+  #survey section.active { display:block; animation:fadein .7s ease; }
+  @keyframes fadein { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
+  #survey h1 { font-size:clamp(1.7rem, 3.6vw, 2.7rem); font-weight:normal;
+    letter-spacing:.04em; margin-bottom:.6em; }
+  #survey .sub { font-size:clamp(.85rem, 1.3vw, 1.05rem); color:rgba(255,255,255,.55);
+    letter-spacing:.14em; text-transform:uppercase; margin-bottom:2.2em; }
+  #survey input[type="number"], #survey input[type="text"] {
+    background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.6);
+    color:#fff; font-family:inherit; font-size:clamp(1.6rem, 3vw, 2.4rem);
+    text-align:center; padding:.2em .4em; width:min(420px, 80vw); outline:none; }
+  #survey input::placeholder { color:rgba(255,255,255,.25); }
+  #survey input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
+  .btn-row { display:flex; flex-wrap:wrap; gap:14px; justify-content:center; margin-top:.5em; }
+  .btn-row button, .next-btn {
+    background:transparent; border:1px solid rgba(255,255,255,.45); color:#fff;
+    font-family:inherit; font-size:clamp(.95rem, 1.5vw, 1.2rem); letter-spacing:.06em;
+    padding:.65em 1.5em; cursor:pointer; transition:background .25s, border-color .25s; }
+  .btn-row button:hover, .next-btn:hover { background:rgba(255,255,255,.12); border-color:#fff; }
+  .next-btn { margin-top:2.2em; }
+  #dots { position:absolute; bottom:7vh; left:0; right:0; display:flex; gap:12px;
+    justify-content:center; }
+  #dots span { width:8px; height:8px; border-radius:50%; border:1px solid rgba(255,255,255,.7);
+    background:transparent; transition:background .3s; }
+  #dots span.on { background:#fff; }
+  #ac { list-style:none; margin-top:14px; min-height:1em; }
+  #ac li { padding:.35em .8em; cursor:pointer; font-size:clamp(.95rem,1.4vw,1.15rem);
+    color:rgba(255,255,255,.75); }
+  #ac li:hover, #ac li.sel { color:#fff; background:rgba(255,255,255,.1); }
+  #loc-hint { margin-top:1em; font-size:.85rem; color:rgba(255,255,255,.4);
+    letter-spacing:.08em; min-height:1.2em; }
+
+  /* ---- fliegender Partikel ---- */
+  #particle { position:fixed; z-index:30; width:36px; height:36px; border-radius:50%;
+    background:#fff; pointer-events:none; transform:translate(-50%,-50%);
+    box-shadow:0 0 18px 6px rgba(255,255,255,.9), 0 0 60px 24px rgba(255,255,255,.35); }
+
+  /* ---- gelandeter Besucher-Punkt (htmlElementsLayer) ---- */
+  .visitor-dot { width:12px; height:12px; border-radius:50%; background:#fff;
+    transform:translate(-50%,-50%); transition:opacity .4s;
+    box-shadow:0 0 10px 3px rgba(255,255,255,.95), 0 0 30px 10px rgba(255,255,255,.3);
+    animation:settle 2.4s ease-out; }
+  @keyframes settle {
+    0% { box-shadow:0 0 24px 10px rgba(255,255,255,1), 0 0 90px 40px rgba(255,255,255,.5); }
+    100% { box-shadow:0 0 10px 3px rgba(255,255,255,.95), 0 0 30px 10px rgba(255,255,255,.3); } }
+
+  /* ---- HUD / Tooltip ---- */
+  #hud { position:fixed; left:0; right:0; bottom:0; z-index:15; text-align:center;
+    padding:0 4vw 3.2vh; }
+  #hud .line { font-size:clamp(.8rem, 1.2vw, 1rem); letter-spacing:.16em;
+    text-transform:uppercase; color:rgba(255,255,255,.55); }
+  #hud .src { font-size:.68rem; letter-spacing:.1em; color:rgba(255,255,255,.28);
+    margin-top:.6em; }
+  #tooltip { position:fixed; z-index:40; pointer-events:none; display:none;
+    background:rgba(0,0,0,.92); border:1px solid rgba(255,255,255,.5);
+    padding:.9em 1.1em; max-width:320px; text-align:left; }
+  #tooltip h3 { font-size:1.02rem; font-weight:normal; letter-spacing:.08em;
+    border-bottom:1px solid rgba(255,255,255,.25); padding-bottom:.4em; margin-bottom:.5em; }
+  #tooltip .row { font-size:.8rem; color:rgba(255,255,255,.8); line-height:1.7;
+    display:flex; justify-content:space-between; gap:1.4em; }
+  #tooltip .row b { font-weight:normal; color:#fff; }
+  #tooltip .foot { font-size:.66rem; color:rgba(255,255,255,.35); margin-top:.55em;
+    letter-spacing:.08em; }
+
+  /* ---- Reset-Fade ---- */
+  #fade { position:fixed; inset:0; z-index:50; background:#000; opacity:0;
+    pointer-events:none; transition:opacity 1.5s ease; }
+  #fade.on { opacity:1; }
+</style>
+</head>
+<body class="survey">
+
+<div id="globe"></div>
+
+<div id="survey">
+  <section data-step="0" class="active">
+    <p class="sub">Frage 1 von 3</p>
+    <h1>Wie alt bist du?</h1>
+    <input id="in-age" type="number" min="16" max="99" placeholder="—" autocomplete="off">
+    <div><button class="next-btn" data-next="0">Weiter ▸</button></div>
+  </section>
+  <section data-step="1">
+    <p class="sub">Frage 2 von 3</p>
+    <h1>Welche Partei hast du bei der Bundestagswahl 2025 gewählt?</h1>
+    <div class="btn-row" id="party-row"></div>
+  </section>
+  <section data-step="2">
+    <p class="sub">Frage 3 von 3</p>
+    <h1>Wo in Deutschland bist du zuhause?</h1>
+    <input id="in-loc" type="text" placeholder="Ort oder PLZ" autocomplete="off" spellcheck="false">
+    <ul id="ac"></ul>
+    <p id="loc-hint"></p>
+  </section>
+  <div id="dots"><span class="on"></span><span></span><span></span></div>
+</div>
+
+<div id="particle"></div>
+
+<div id="hud">
+  <p class="line">Scrollen = Zoom · Ziehen = Drehen · Bundesland berühren für Details</p>
+  <p class="src">Besucherdaten dieser Installation · Grundglühen: Bundestagswahl 2025 (Bundeswahlleiterin)</p>
+</div>
+<div id="tooltip"></div>
+<div id="fade"></div>
+
+<script>
+  (function () {
+    function load(src, onload) {
+      var s = document.createElement('script');
+      s.src = src; s.onload = onload; document.head.appendChild(s);
+    }
+    load('https://unpkg.com/globe.gl@2.46.1/dist/globe.gl.min.js', function () {
+      load('app.js?v=' + Date.now());
+    });
+  })();
+</script>
+</body>
+</html>
