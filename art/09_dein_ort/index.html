@@ -71,6 +71,47 @@
     0% { box-shadow:0 0 24px 10px rgba(255,255,255,1), 0 0 90px 40px rgba(255,255,255,.5); }
     100% { box-shadow:0 0 10px 3px rgba(255,255,255,.95), 0 0 30px 10px rgba(255,255,255,.3); } }
 
+  /* ---- Filter-Menü (oben rechts) ---- */
+  #menu { position:fixed; top:2.4vh; right:1.6vw; z-index:16; width:min(300px, 30vw);
+    background:rgba(0,0,0,.9); border:1px solid rgba(255,255,255,.45); padding:1em 1.1em;
+    opacity:0; pointer-events:none; transition:opacity 1.2s ease; }
+  body.explore #menu { opacity:1; pointer-events:auto; }
+  #menu h2 { font-size:.78rem; font-weight:normal; letter-spacing:.18em;
+    text-transform:uppercase; color:rgba(255,255,255,.55); margin-bottom:.7em; }
+  #menu .grp { font-size:.66rem; letter-spacing:.14em; text-transform:uppercase;
+    color:rgba(255,255,255,.4); margin:.7em 0 .35em; }
+  #menu .opts { display:flex; flex-wrap:wrap; gap:5px; }
+  #menu .opts button { background:transparent; border:1px solid rgba(255,255,255,.35);
+    color:rgba(255,255,255,.75); font-family:inherit; font-size:.74rem; padding:.3em .6em;
+    cursor:pointer; letter-spacing:.04em; transition:background .2s, color .2s; }
+  #menu .opts button:hover { border-color:#fff; color:#fff; }
+  #menu .opts button.on { background:#fff; color:#000; border-color:#fff; }
+  #legend { margin-top:.9em; }
+  #legend .bar { height:8px; background:linear-gradient(90deg,
+    #313695, #4575b4, #74add1, #fee090, #f46d43, #a50026); border:1px solid rgba(255,255,255,.25); }
+  #legend .lbl { display:flex; justify-content:space-between; font-size:.62rem;
+    color:rgba(255,255,255,.45); letter-spacing:.1em; margin-top:.3em; }
+  #legend .cap { font-size:.68rem; color:rgba(255,255,255,.6); margin-top:.5em; line-height:1.5; }
+
+  /* ---- Detail-Fenster (links, bei Klick auf Bundesland) ---- */
+  #detail { position:fixed; top:50%; left:1.6vw; transform:translateY(-50%); z-index:16;
+    width:min(340px, 34vw); background:rgba(0,0,0,.92); border:1px solid rgba(255,255,255,.5);
+    padding:1.2em 1.3em; display:none; }
+  body.explore #detail.open { display:block; animation:fadein .4s ease; }
+  #detail h3 { font-size:1.25rem; font-weight:normal; letter-spacing:.06em;
+    border-bottom:1px solid rgba(255,255,255,.25); padding-bottom:.45em; margin-bottom:.6em;
+    padding-right:1.2em; }
+  #detail .big { font-size:.95rem; color:#fff; margin:.4em 0 .8em; line-height:1.55; }
+  #detail .big b { font-weight:normal; border-bottom:1px solid rgba(255,255,255,.4); }
+  #detail .row { font-size:.8rem; color:rgba(255,255,255,.8); line-height:1.8;
+    display:flex; justify-content:space-between; gap:1.4em; }
+  #detail .row b { font-weight:normal; color:#fff; }
+  #detail .foot { font-size:.66rem; color:rgba(255,255,255,.35); margin-top:.7em;
+    letter-spacing:.08em; line-height:1.6; }
+  #detail-close { position:absolute; top:.6em; right:.7em; background:none; border:none;
+    color:rgba(255,255,255,.6); font-size:1.1rem; cursor:pointer; font-family:inherit; }
+  #detail-close:hover { color:#fff; }
+
   /* ---- HUD / Tooltip ---- */
   #hud { position:fixed; left:0; right:0; bottom:0; z-index:15; text-align:center;
     padding:0 4vw 3.2vh; }
@@ -123,8 +164,27 @@
 
 <div id="particle"></div>
 
+<div id="menu">
+  <h2>Wer ist wie du?</h2>
+  <div class="grp">Altersgruppe</div>
+  <div class="opts" id="f-age"></div>
+  <div class="grp">Partei</div>
+  <div class="opts" id="f-party"></div>
+  <div id="legend">
+    <div class="bar"></div>
+    <div class="lbl"><span>kalt · wenige</span><span>heiß · viele</span></div>
+    <p class="cap">Heiß = dort haben viele so geantwortet wie dein Filter.
+    Heiße Regionen liegen höher.</p>
+  </div>
+</div>
+
+<div id="detail">
+  <button id="detail-close">✕</button>
+  <div id="detail-body"></div>
+</div>
+
 <div id="hud">
-  <p class="line">Scrollen = Zoom · Ziehen = Drehen · Bundesland berühren für Details</p>
+  <p class="line">Scrollen = Zoom · Ziehen = Drehen · Bundesland anklicken für Details</p>
   <p class="src">Besucherdaten dieser Installation · Grundglühen: Bundestagswahl 2025 (Bundeswahlleiterin)</p>
 </div>
 <div id="tooltip"></div>

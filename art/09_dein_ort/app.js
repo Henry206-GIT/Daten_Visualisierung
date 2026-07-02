@@ -72,7 +72,32 @@
     grid.push(p);
   }
 
-  // ---------- Globus (streng monochrom) ----------
+  // ---------- Heat-Farbskala (blau=kalt → rot=heiß, wie #legend-Gradient) ----------
+  const HEAT_STOPS = [
+    [0x31, 0x36, 0x95], [0x45, 0x75, 0xb4], [0x74, 0xad, 0xd1],
+    [0xfe, 0xe0, 0x90], [0xf4, 0x6d, 0x43], [0xa5, 0x00, 0x26],
+  ];
+  function heatColor(t, alpha) {
+    const x = Math.max(0, Math.min(1, t)) * (HEAT_STOPS.length - 1);
+    const i = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
+    const f = x - i;
+    const c = HEAT_STOPS[i].map((v, k) => Math.round(v + (HEAT_STOPS[i + 1][k] - v) * f));
+    return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+  }
+  // Normierung: max. Zellgewicht der aktuellen Filterung über grobes 0,5°-Raster schätzen
+  let heatCap = 10;
+  function calcCap(pts) {
+    const m = new Map(); let max = 0;
+    for (const p of pts) {
+      const k = Math.round(p.lat * 2) + ',' + Math.round(p.lng * 2);
+      const v = (m.get(k) || 0) + p.w;
+      m.set(k, v); if (v > max) max = v;
+    }
+    return Math.max(4, max);
+  }
+  const heatT = w => Math.min(1, Math.log1p(w) / Math.log1p(heatCap));
+
+  // ---------- Globus ----------
   let hovered = null;
   const globe = Globe()(document.getElementById('globe'))
     .width(innerWidth).height(innerHeight)
@@ -96,11 +121,11 @@
     .hexBinPointLat(p => p.lat)
     .hexBinPointLng(p => p.lng)
     .hexBinPointWeight(p => p.w)
-    .hexBinResolution(4)
-    .hexMargin(0.35)
-    .hexAltitude(d => 0.002 + Math.min(0.03, d.sumWeight * 0.001))
-    .hexTopColor(d => `rgba(255,255,255,${Math.min(0.9, 0.15 + d.sumWeight * 0.02)})`)
-    .hexSideColor(() => 'rgba(255,255,255,0.10)')
+    .hexBinResolution(3)
+    .hexMargin(0.2)
+    .hexAltitude(d => 0.003 + heatT(d.sumWeight) * 0.05)
+    .hexTopColor(d => heatColor(heatT(d.sumWeight), 0.95))
+    .hexSideColor(d => heatColor(heatT(d.sumWeight), 0.5))
     .hexTransitionDuration(2500 / FAST)
     .htmlAltitude(0.012)
     .htmlElement(() => {
@@ -174,6 +199,47 @@
 
   const seedPts = buildSeed();
   const heatPoints = () => seedPts.concat(loadVisitors().map(visitorPoint));
+
+  // ---------- Filter (Default = eigene Antworten, Menü oben rechts) ----------
+  const filter = { age: 'Alle', party: 'Alle' };
+  const matchesFilter = p =>
+    (filter.age === 'Alle' || p.bracket === filter.age) &&
+    (filter.party === 'Alle' || p.party === filter.party);
+  const filterLabel = () =>
+    `${filter.age === 'Alle' ? 'alle Altersgruppen' : filter.age + ' Jahre'} · ` +
+    `${filter.party === 'Alle' ? 'alle Parteien' : filter.party}`;
+
+  function applyFilter() {
+    const pts = heatPoints().filter(matchesFilter);
+    heatCap = calcCap(pts);
+    globe.hexBinPointsData(pts);
+    if (detailLand) renderDetail(detailLand);
+  }
+
+  function mkOpts(id, values, key) {
+    const box = document.getElementById(id);
+    box.innerHTML = '';
+    for (const v of values) {
+      const b = document.createElement('button');
+      b.textContent = v;
+      b.dataset.v = v;
+      b.addEventListener('click', () => { filter[key] = v; syncMenu(); applyFilter(); });
+      box.appendChild(b);
+    }
+  }
+  function syncMenu() {
+    for (const [id, key] of [['f-age', 'age'], ['f-party', 'party']])
+      for (const b of document.getElementById(id).children)
+        b.classList.toggle('on', b.dataset.v === filter[key]);
+  }
+  mkOpts('f-age', ['Alle'].concat(BRACKETS.map(b => b.label)), 'age');
+  mkOpts('f-party', ['Alle'].concat(data.parteien), 'party');
+
+  function setFilterFromVisitor() {
+    filter.age = visitor ? bracketOf(visitor.age).label : 'Alle';
+    filter.party = (visitor && data.parteien.includes(visitor.party)) ? visitor.party : 'Alle';
+    syncMenu();
+  }
 
   // ---------- Orts-Auflösung (PLZ / Ortsname / Bundesland) ----------
   const placeIndex = []; // [lowerName, anzeige, plzKey|null, landName|null]
@@ -315,7 +381,8 @@
   function land(persist = true) {
     if (persist) saveVisitor(visitor);
     globe.htmlElementsData([{ lat: visitor.lat, lng: visitor.lng }]);
-    globe.hexBinPointsData(heatPoints());
+    setFilterFromVisitor();
+    applyFilter();
     setPhase('explore');
     armIdle();
   }
@@ -338,21 +405,47 @@
     const nVisitors = loadVisitors().filter(v => v.state === landName).length;
     return { rows, btwWinner, nVisitors };
   }
-  function renderTooltip(landName) {
-    const a = aggregate(landName);
-    tooltip.innerHTML =
-      `<h3>${landName}</h3>` +
-      a.rows.map(r => `<div class="row"><span>Top-Partei der ${r.label}-Jährigen</span><b>${r.top}</b></div>`).join('') +
-      `<div class="foot">${a.nVisitors} Besucher dieser Installation · Wahlsieger BTW 2025: ${a.btwWinner}</div>`;
-  }
   globe.onPolygonHover(f => {
     hovered = (phase === 'explore' && f && f.properties.__de) ? f : null;
     globe.polygonAltitude(d => d === hovered ? 0.012 : 0.006)
       .polygonStrokeColor(d => d.properties.__de
         ? (d === hovered ? '#ffffff' : '#ececec')
         : '#4a4a4a');
-    if (hovered) { renderTooltip(hovered.properties.name); tooltip.style.display = 'block'; }
-    else tooltip.style.display = 'none';
+    if (hovered) {
+      tooltip.innerHTML = `<h3>${hovered.properties.name}</h3>` +
+        `<div class="foot">Anklicken für Details</div>`;
+      tooltip.style.display = 'block';
+    } else tooltip.style.display = 'none';
+  });
+
+  // ---------- Detail-Fenster (links, bei Klick) ----------
+  const detailEl = document.getElementById('detail');
+  const detailBody = document.getElementById('detail-body');
+  let detailLand = null;
+  function renderDetail(landName) {
+    if (!landByName[landName]) return;
+    detailLand = landName;
+    const a = aggregate(landName);
+    const all = heatPoints().filter(p => p.state === landName);
+    const match = all.filter(matchesFilter);
+    const wAll = all.reduce((s, p) => s + p.w, 0);
+    const wMatch = match.reduce((s, p) => s + p.w, 0);
+    const pct = wAll ? Math.round(100 * wMatch / wAll) : 0;
+    detailBody.innerHTML =
+      `<h3>${landName}</h3>` +
+      `<p class="big"><b>${pct}%</b> der Antworten hier passen zu deinem Filter<br>(${filterLabel()})</p>` +
+      a.rows.map(r => `<div class="row"><span>Top-Partei der ${r.label}-Jährigen</span><b>${r.top}</b></div>`).join('') +
+      `<div class="foot">${a.nVisitors} Besucher dieser Installation · Wahlsieger BTW 2025: ${a.btwWinner}` +
+      ` · Wahlbeteiligung ${landByName[landName].beteiligung.toFixed(1).replace('.', ',')} %</div>`;
+    detailEl.classList.add('open');
+  }
+  function closeDetail() {
+    detailEl.classList.remove('open');
+    detailLand = null;
+  }
+  document.getElementById('detail-close').addEventListener('click', closeDetail);
+  globe.onPolygonClick(f => {
+    if (phase === 'explore' && f && f.properties.__de) renderDetail(f.properties.name);
   });
   addEventListener('mousemove', e => {
     if (tooltip.style.display !== 'block') return;
@@ -383,6 +476,8 @@
       globe.htmlElementsData([]);
       globe.hexBinPointsData([]);
       tooltip.style.display = 'none';
+      closeDetail();
+      filter.age = 'Alle'; filter.party = 'Alle'; syncMenu();
       hovered = null;
       visitor = null;
       answers.age = null; answers.party = null;
@@ -413,6 +508,7 @@
       { age: +(Q.get('age') || 34), party: Q.get('party') || 'SPD', ts: Date.now() }, loc);
     if (!Q.has('pov')) globe.pointOfView({ lat: visitor.lat, lng: visitor.lng, altitude: 0.8 }, 0);
     land(false); // Dev-Besucher nicht persistieren
+    if (Q.has('detail')) renderDetail(Q.get('detail'));
   } else {
     setPhase('survey');
     showStep(0);
