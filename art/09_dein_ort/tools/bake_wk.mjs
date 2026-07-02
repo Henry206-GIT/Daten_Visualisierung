@@ -35,12 +35,17 @@ const lines = readFileSync(kergPath, 'utf8').replace(/^﻿/, '').split(/\r?\n/);
 const start = lines.findIndex(l => l.startsWith('Wahlart;'));
 const header = lines[start].split(';');
 const col = name => header.indexOf(name);
-const iArt = col('Gebietsart'), iName = col('Gebietsname'), iGrArt = col('Gruppenart'),
+const iArt = col('Gebietsart'), iNr = col('Gebietsnummer'), iName = col('Gebietsname'),
+  iUegNr = col('UegGebietsnummer'), iGrArt = col('Gruppenart'),
   iGr = col('Gruppenname'), iStimme = col('Stimme'), iAnz = col('Anzahl');
-const votes = {}; // name -> {party: n}
+const landName = {}; // Land-Nr -> Name
+const votes = {};    // WK-Name -> {party: n}
+const wkLandNr = {}; // WK-Name -> Land-Nr
 for (const line of lines.slice(start + 1)) {
   const f = line.split(';');
+  if (f[iArt] === 'Land') { landName[f[iNr]] = f[iName]; continue; }
   if (f[iArt] !== 'Wahlkreis' || f[iGrArt] !== 'Partei' || f[iStimme] !== '2') continue;
+  wkLandNr[f[iName]] = f[iUegNr];
   const party = (f[iGr] || '').trim();
   if (!HAUPT.has(party)) continue;
   const n = parseInt(f[iAnz], 10);
@@ -52,7 +57,8 @@ for (const line of lines.slice(start + 1)) {
 const out = [];
 const misses = [];
 for (const [name, c] of Object.entries(centroids)) {
-  if (votes[name]) out.push([c[0], c[1], votes[name]]);
+  const land = landName[wkLandNr[name]];
+  if (votes[name] && land) out.push([c[0], c[1], votes[name], land]);
   else misses.push(name);
 }
 if (misses.length) { console.error('Ohne Ergebnis-Match:', misses); process.exit(1); }

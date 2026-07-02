@@ -213,8 +213,9 @@
       });
     }
     await load('https://unpkg.com/globe.gl@2.46.1/dist/globe.gl.min.js');
-    // gleiche three-Revision wie globe.gl-Bundle (>=0.179) fuer eigene Heat-Meshes
-    window.THREE = await import('https://unpkg.com/three@0.185.1/build/three.module.js');
+    // gleiche three-Revision wie globe.gl-Bundle (>=0.179) fuer eigene Heat-Meshes;
+    // lokal gevendort (three.module.js + three.core.js) — kein CDN-Lag am Kiosk
+    window.THREE = await import('./three.module.js');
     load('app.js?v=' + Date.now());
   })();
 </script>

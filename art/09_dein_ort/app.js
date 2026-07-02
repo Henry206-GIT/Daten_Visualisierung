@@ -21,12 +21,13 @@
   const easeIO = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
   // ---------- Daten laden ----------
-  const [world, laenderGeo, data, plzMap, wkList] = await Promise.all([
+  const [world, laenderGeo, data, plzMap, wkList, alterData] = await Promise.all([
     fetch('world.geojson').then(r => r.json()),
     fetch('../geo_bundeslaender.json').then(r => r.json()),
     fetch('../data.json').then(r => r.json()),
     fetch('plz.json').then(r => r.json()),
-    fetch('wk.json').then(r => r.json()), // 299 Wahlkreise: [lat, lng, {Partei: Zweitstimmen}]
+    fetch('wk.json').then(r => r.json()), // 299 Wahlkreise: [lat, lng, {Partei: Zweitstimmen}, Land]
+    fetch('alter.json').then(r => r.json()), // RWS: Land -> Altersgruppe -> {Partei: Zweitstimmen}
   ]);
 
   const landByName = {};
@@ -126,13 +127,14 @@
   addEventListener('resize', () => globe.width(innerWidth).height(innerHeight));
 
   // ---------- Besucher-Speicher + Seed ----------
+  // Altersgruppen = Schema der Repräsentativen Wahlstatistik (alter.json)
   const BRACKETS = [
-    { label: '16–24', min: 16, max: 24, w: 0.10 },
-    { label: '25–34', min: 25, max: 34, w: 0.13 },
-    { label: '35–49', min: 35, max: 49, w: 0.24 },
-    { label: '50–64', min: 50, max: 64, w: 0.26 },
-    { label: '65–74', min: 65, max: 74, w: 0.15 },
-    { label: '75+',   min: 75, max: 120, w: 0.12 },
+    { label: '18–24', min: 16, max: 24, w: 0.09 },
+    { label: '25–34', min: 25, max: 34, w: 0.15 },
+    { label: '35–44', min: 35, max: 44, w: 0.15 },
+    { label: '45–59', min: 45, max: 59, w: 0.24 },
+    { label: '60–69', min: 60, max: 69, w: 0.17 },
+    { label: '70+',   min: 70, max: 120, w: 0.20 },
   ];
   const bracketOf = age => BRACKETS.find(b => age >= b.min && age <= b.max) || BRACKETS[5];
 
@@ -201,7 +203,6 @@
   // × Altersgruppen-Anteil. 299 Wahlkreise → echte Unterschiede unterhalb der Länder;
   // PLZ-Dichte ≈ Bevölkerungsdichte → Städte werden heiß.
   const plzList = Object.values(plzMap);
-  const wkSum = wkList.map(w => Object.values(w[2]).reduce((s, v) => s + v, 0));
   const COSD = Math.cos(51 * Math.PI / 180);
   const plzWk = plzList.map(e => {
     let best = 0, bd = Infinity;
@@ -215,17 +216,41 @@
   const plzCountByWk = new Array(wkList.length).fill(0);
   for (const i of plzWk) plzCountByWk[i]++;
 
-  const bracketShare = label =>
-    label === 'Alle' ? 1 : (BRACKETS.find(b => b.label === label) || { w: 0.15 }).w;
+  // Anteil der Altersgruppe an den Wählern einer Partei im Land (aus alter.json, RWS).
+  // So verschiebt der Alters-Filter die Karte real: Parteien haben je Region
+  // unterschiedliche Altersstrukturen.
+  function ageFactorFn() {
+    if (filter.age === 'Alle') return () => 1;
+    const cache = new Map();
+    return (land, party) => {
+      const k = land + '|' + party;
+      if (cache.has(k)) return cache.get(k);
+      const a = alterData[land];
+      let f = 0;
+      if (a) {
+        let tot = 0;
+        for (const b of Object.values(a)) tot += b[party] || 0;
+        if (tot) f = ((a[filter.age] || {})[party] || 0) / tot;
+      }
+      cache.set(k, f);
+      return f;
+    };
+  }
 
   function buildHeatData() {
-    const ageShare = bracketShare(filter.age);
+    const fac = ageFactorFn();
     const pts = [];
     for (let i = 0; i < plzList.length; i++) {
       const e = plzList[i];
       const wk = plzWk[i];
-      const votes = filter.party === 'Alle' ? wkSum[wk] : (wkList[wk][2][filter.party] || 0);
-      const w = votes * ageShare / plzCountByWk[wk];
+      const wkv = wkList[wk][2], land = wkList[wk][3];
+      let w = 0;
+      if (filter.party === 'Alle') {
+        for (const p of Object.keys(wkv)) w += wkv[p] * fac(land, p);
+      } else {
+        w = (wkv[filter.party] || 0) * fac(land, filter.party);
+      }
+      w /= plzCountByWk[wk];
       if (w > 0) pts.push({ lat: e[0], lng: e[1], w });
     }
     return pts;
@@ -241,7 +266,7 @@
   // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
   const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35, cold: 0.35 };
   const DE_BBOX = { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
-  const CELL_CAP = 40000;
+  const CELL_CAP = 80000;
 
   // Deutschland-Maske: Länder-Polygone einmal in ein Canvas rastern -> O(1)-Inside-Test.
   // Hexagone ausserhalb des Umrisses entfallen, innen wird lueckenlos gefuellt.
@@ -280,7 +305,7 @@
 
   function cellSizeDeg() {
     const alt = globe.pointOfView().altitude;
-    let s = Math.max(0.03, Math.min(0.7, alt * 0.3)) / heat.density;
+    let s = Math.max(0.02, Math.min(0.7, alt * 0.3)) / heat.density;
     // harte Obergrenze für Zellzahl (KDE + InstancedMesh); ~58 % der BBox liegen in Deutschland
     const est = ((DE_BBOX.n - DE_BBOX.s) / (s * 0.866)) * ((DE_BBOX.e - DE_BBOX.w) / (s / LNG_COS)) * 0.58;
     if (est > CELL_CAP) s *= Math.sqrt(est / CELL_CAP);
@@ -426,6 +451,10 @@
       if (tHit < 0) { hoverGeo = null; }
       else {
         const g = globe.toGeoCoords({ x: ox + dx * tHit, y: oy + dy * tHit, z: oz + dz * tHit });
+        // erst neu layouten, wenn die Maus eine nennenswerte Strecke gewandert ist
+        // (bei bis zu 80k Instanzen ist ein Voll-Layout pro Frame zu teuer)
+        const minMove = (heatCells[0] ? heatCells[0].sizeDeg : 0.1) * 0.5;
+        if (hoverGeo && Math.hypot(g.lat - hoverGeo.lat, (g.lng - hoverGeo.lng) * LNG_COS) < minMove) return;
         hoverGeo = { lat: g.lat, lng: g.lng };
       }
     }
