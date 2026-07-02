@@ -21,13 +21,14 @@
   const easeIO = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
   // ---------- Daten laden ----------
-  const [world, laenderGeo, data, plzMap, wkList, alterData] = await Promise.all([
+  const [world, laenderGeo, data, plzMap, wkList, alterData, kreiseGeo] = await Promise.all([
     fetch('world.geojson').then(r => r.json()),
     fetch('../geo_bundeslaender.json').then(r => r.json()),
     fetch('../data.json').then(r => r.json()),
     fetch('plz.json').then(r => r.json()),
     fetch('wk.json').then(r => r.json()), // 299 Wahlkreise: [lat, lng, {Partei: Zweitstimmen}, Land]
     fetch('alter.json').then(r => r.json()), // RWS: Land -> Altersgruppe -> {Partei: Zweitstimmen}
+    fetch('kreise.geojson').then(r => r.json()), // 434 Kreise (isellsoap/deutschlandGeoJSON)
   ]);
 
   const landByName = {};
@@ -63,6 +64,16 @@
     .filter(f => f.properties.ISO_A3 !== 'DEU')
     .concat(laenderGeo.features);
 
+  // Kreis-Grenzen als Pfade (Linien) statt Polygone: 434 Kreise triangulieren ist zu
+  // teuer, Linien sind billig. Punkte als [lat, lng, alt]-Tupel, markiert via .kreis.
+  const kreisPaths = [];
+  for (const f of kreiseGeo.features)
+    for (const ring of featureRings(f)) {
+      const p = ring.map(([lng, lat]) => [lat, lng, 0.0068]);
+      p.kreis = true;
+      kreisPaths.push(p);
+    }
+
   // ---------- Architektur-Grid (Lat/Lng-Linien alle 15°) ----------
   const grid = [];
   for (let lat = -75; lat <= 75; lat += 15) {
@@ -92,23 +103,29 @@
   }
 
   // ---------- Globus ----------
-  let hovered = null;
+  let hoveredLand = null;  // Name des Bundeslands unter der Maus
+  let kreisNear = false;   // Kreis-Grenzen erst beim Ranzoomen betonen
+  const strokeFn = f => f.properties.__de
+    ? (f.properties.name === hoveredLand ? '#ffffff' : '#ececec')
+    : '#4a4a4a';
+  const pathColorFn = p => p.kreis
+    ? (kreisNear ? '#5a5a5a' : '#1a1a1a')
+    : 'rgba(255,255,255,0.10)';
   const globe = Globe()(document.getElementById('globe'))
     .width(innerWidth).height(innerHeight)
     .backgroundColor('#000000')
     .showAtmosphere(false)
     .showGraticules(false)
-    .pathsData(grid)
-    .pathColor(() => 'rgba(255,255,255,0.10)')
+    .pathsData(grid.concat(kreisPaths))
+    .pathPointAlt(a => a[2] || 0.002)
+    .pathColor(pathColorFn)
     .pathTransitionDuration(0)
     .polygonsData(features)
     .polygonCapColor(() => 'rgba(0,0,0,0.88)')
     .polygonSideColor(() => 'rgba(0,0,0,0)')
     // Achtung: rgba-Strokes rendern als Punktstaub (transparente Lines) — opak halten
-    .polygonStrokeColor(f => f.properties.__de
-      ? (f === hovered ? '#ffffff' : '#ececec')
-      : '#4a4a4a')
-    .polygonAltitude(0.006) // konstant — angehobene Caps wuerden die Heat-Quadrate verdecken
+    .polygonStrokeColor(strokeFn)
+    .polygonAltitude(0.006) // konstant — angehobene Caps wuerden die Heat-Zellen verdecken
     .polygonLabel(null)
     .polygonsTransitionDuration(300)
     // "Heatmap" als H3-HexBins: KDE-heatmapsLayer rendert auf schwachen GPUs nicht (WebGPU-Fallback)
@@ -266,7 +283,7 @@
   // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
   const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35, cold: 0.35 };
   const DE_BBOX = { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
-  const CELL_CAP = 80000;
+  const CELL_CAP = 150000;
 
   // Deutschland-Maske: Länder-Polygone einmal in ein Canvas rastern -> O(1)-Inside-Test.
   // Hexagone ausserhalb des Umrisses entfallen, innen wird lueckenlos gefuellt.
@@ -355,35 +372,55 @@
     return cells;
   }
 
-  function cellMatrix(o, c, elevate) {
-    // Hex-Umkreisradius: Nachbarabstand / √3, kleine Fuge
-    const rHex = c.sizeDeg * UNIT * 0.577 * 0.94;
-    // Hoehe proportional zur Zellgroesse — sonst werden Zellen beim Reinzoomen zu Spikes
-    const h = rHex * (0.25 + c.t * 2.6 * heat.relief) * elevate;
-    const base = globe.getCoords(c.lat, c.lng, 0.0075); // knapp ueber den Polygon-Caps (0.006)
-    const r = Math.hypot(base.x, base.y, base.z);
-    const f = (r + h / 2) / r;
-    o.position.set(base.x * f, base.y * f, base.z * f);
-    o.lookAt(0, 0, 0);
-    o.scale.set(rHex, rHex, Math.max(rHex * 0.1, h));
-    o.updateMatrix();
-    return o.matrix;
-  }
+  // Zellbasis (Position + Achsen) wird EINMAL beim Rebuild berechnet; das Layout schreibt
+  // die Instanz-Matrizen danach direkt als Zahlen (kein Object3D pro Zelle) — Faktor ~10
+  // schneller, noetig fuer bis zu 150k Instanzen. Hover aktualisiert nur Zellen in der Naehe.
+  const STRIDE = 14; // [px,py,pz, xAchse(3), yAchse(3), zAchse(3)=radial, t, rHex]
+  let cellArr = null;
+  let cellBuckets = new Map();
+  let bucketSize = 1;
+  let prevAffected = null;
 
-  function layoutHeat() {
+  const bucketKey = (lat, lng) =>
+    Math.floor(lat / bucketSize) + '|' + Math.floor(lng * LNG_COS / bucketSize);
+
+  function layoutCells(indices) {
     if (!heatMesh) return;
-    const o = tmpObj.o || (tmpObj.o = dummy());
+    const m = heatMesh.instanceMatrix.array;
+    const n = indices ? indices.length : heatCells.length;
     const rad = heatCells.length ? heatCells[0].sizeDeg * 3 : 1;
-    for (let i = 0; i < heatCells.length; i++) {
-      const c = heatCells[i];
+    for (let j = 0; j < n; j++) {
+      const i = indices ? indices[j] : j;
+      const k = i * STRIDE, q = i * 16;
+      const t = cellArr[k + 12], rH = cellArr[k + 13];
       let elevate = 1;
       if (hoverGeo) {
-        const d = Math.hypot(c.lat - hoverGeo.lat, (c.lng - hoverGeo.lng) * LNG_COS);
-        elevate = 1 + 2.4 * Math.exp(-(d * d) / (rad * rad));
+        const c = heatCells[i];
+        const dy = c.lat - hoverGeo.lat, dx = (c.lng - hoverGeo.lng) * LNG_COS;
+        elevate = 1 + 2.4 * Math.exp(-(dx * dx + dy * dy) / (rad * rad));
       }
-      heatMesh.setMatrixAt(i, cellMatrix(o, c, elevate));
+      const h = Math.max(rH * 0.1, rH * (0.25 + t * 2.6 * heat.relief) * elevate);
+      m[q] = cellArr[k + 3] * rH; m[q + 1] = cellArr[k + 4] * rH; m[q + 2] = cellArr[k + 5] * rH; m[q + 3] = 0;
+      m[q + 4] = cellArr[k + 6] * rH; m[q + 5] = cellArr[k + 7] * rH; m[q + 6] = cellArr[k + 8] * rH; m[q + 7] = 0;
+      m[q + 8] = cellArr[k + 9] * h; m[q + 9] = cellArr[k + 10] * h; m[q + 10] = cellArr[k + 11] * h; m[q + 11] = 0;
+      m[q + 12] = cellArr[k] + cellArr[k + 9] * h / 2;
+      m[q + 13] = cellArr[k + 1] + cellArr[k + 10] * h / 2;
+      m[q + 14] = cellArr[k + 2] + cellArr[k + 11] * h / 2;
+      m[q + 15] = 1;
     }
     heatMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  function affectedAround(g) {
+    if (!g) return [];
+    const out = [];
+    const by = Math.floor(g.lat / bucketSize), bx = Math.floor(g.lng * LNG_COS / bucketSize);
+    for (let iy = by - 1; iy <= by + 1; iy++)
+      for (let ix = bx - 1; ix <= bx + 1; ix++) {
+        const arr = cellBuckets.get(iy + '|' + ix);
+        if (arr) for (const i of arr) out.push(i);
+      }
+    return out;
   }
 
   function rebuildHeat() {
@@ -402,9 +439,29 @@
     });
     mat.toneMapped = false; // Tonemapping waescht die Thermal-Farben aus
     heatMesh = new THREE.InstancedMesh(geo, mat, heatCells.length);
+    cellArr = new Float32Array(heatCells.length * STRIDE);
+    cellBuckets = new Map();
+    bucketSize = sizeDeg * 4;
+    prevAffected = null;
+    const o = tmpObj.o || (tmpObj.o = dummy());
+    const rHex = sizeDeg * UNIT * 0.577 * 0.94; // Umkreisradius: Nachbarabstand/√3, kleine Fuge
     const col = new THREE.Color();
     for (let i = 0; i < heatCells.length; i++) {
-      const t = heatCells[i].t;
+      const c = heatCells[i];
+      const base = globe.getCoords(c.lat, c.lng, 0.0075); // knapp ueber den Polygon-Caps
+      o.position.set(base.x, base.y, base.z);
+      o.lookAt(0, 0, 0); // +Z zeigt radial nach aussen
+      o.updateMatrix();
+      const e = o.matrix.elements, k = i * STRIDE;
+      cellArr[k] = base.x; cellArr[k + 1] = base.y; cellArr[k + 2] = base.z;
+      cellArr[k + 3] = e[0]; cellArr[k + 4] = e[1]; cellArr[k + 5] = e[2];
+      cellArr[k + 6] = e[4]; cellArr[k + 7] = e[5]; cellArr[k + 8] = e[6];
+      cellArr[k + 9] = e[8]; cellArr[k + 10] = e[9]; cellArr[k + 11] = e[10];
+      cellArr[k + 12] = c.t; cellArr[k + 13] = rHex;
+      const bk = bucketKey(c.lat, c.lng);
+      const arr = cellBuckets.get(bk);
+      if (arr) arr.push(i); else cellBuckets.set(bk, [i]);
+      const t = c.t;
       const x = t * (HEAT_STOPS.length - 1);
       const j = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
       const f = x - j;
@@ -418,26 +475,27 @@
     }
     if (heatMesh.instanceColor) heatMesh.instanceColor.needsUpdate = true;
     heatMesh.visible = heatVisible;
-    layoutHeat();
+    layoutCells(null);
     globe.scene().add(heatMesh);
   }
 
-  // LOD: bei Zoom-Aenderung > 20 % neu rastern (entprellt)
+  // LOD: bei Zoom-Aenderung > 20 % neu rastern (entprellt); Kreis-Grenzen beim Ranzoomen betonen
   let lastCellSize = 0, lodTimer = null;
   globe.controls().addEventListener('change', () => {
-    if (phase !== 'explore' || !heatVisible) return;
+    if (phase !== 'explore') return;
+    const near = globe.pointOfView().altitude < 0.5;
+    if (near !== kreisNear) { kreisNear = near; globe.pathColor(pathColorFn); }
+    if (!heatVisible) return;
     const s = cellSizeDeg();
     if (lastCellSize && Math.abs(s - lastCellSize) / lastCellSize < 0.2) return;
     clearTimeout(lodTimer);
     lodTimer = setTimeout(() => { lastCellSize = cellSizeDeg(); rebuildHeat(); }, 180);
   });
 
-  // Hover: Maus -> Kugelpunkt (Ray-Sphere), Zellen darunter heben sich
-  let hoverRaf = false;
-  addEventListener('mousemove', e => {
-    if (phase !== 'explore' || !heatMesh) return;
+  // Maus/NDC -> Punkt auf der Kugeloberflaeche (Ray-Sphere-Schnitt, R=100)
+  function ndcToSphere(nx, ny) {
     const cam = globe.camera();
-    const ndc = new THREE.Vector3((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1, 0.5);
+    const ndc = new THREE.Vector3(nx, ny, 0.5);
     ndc.unproject(cam);
     const ox = cam.position.x, oy = cam.position.y, oz = cam.position.z;
     let dx = ndc.x - ox, dy = ndc.y - oy, dz = ndc.z - oz;
@@ -445,23 +503,46 @@
     const b = 2 * (ox * dx + oy * dy + oz * dz);
     const cq = ox * ox + oy * oy + oz * oz - R * R;
     const disc = b * b - 4 * cq;
-    if (disc < 0) { hoverGeo = null; }
+    if (disc < 0) return null;
+    const tHit = (-b - Math.sqrt(disc)) / 2;
+    if (tHit < 0) return null;
+    return { x: ox + dx * tHit, y: oy + dy * tHit, z: oz + dz * tHit };
+  }
+
+  // Hover: Zellen unter der Maus heben sich — nur betroffene Zellen werden neu gelegt
+  let hoverRaf = false;
+  addEventListener('mousemove', e => {
+    if (phase !== 'explore' || !heatMesh) return;
+    const p = ndcToSphere((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    if (!p) { if (!hoverGeo) return; hoverGeo = null; }
     else {
-      const tHit = (-b - Math.sqrt(disc)) / 2;
-      if (tHit < 0) { hoverGeo = null; }
-      else {
-        const g = globe.toGeoCoords({ x: ox + dx * tHit, y: oy + dy * tHit, z: oz + dz * tHit });
-        // erst neu layouten, wenn die Maus eine nennenswerte Strecke gewandert ist
-        // (bei bis zu 80k Instanzen ist ein Voll-Layout pro Frame zu teuer)
-        const minMove = (heatCells[0] ? heatCells[0].sizeDeg : 0.1) * 0.5;
-        if (hoverGeo && Math.hypot(g.lat - hoverGeo.lat, (g.lng - hoverGeo.lng) * LNG_COS) < minMove) return;
-        hoverGeo = { lat: g.lat, lng: g.lng };
-      }
+      const g = globe.toGeoCoords(p);
+      const minMove = (heatCells[0] ? heatCells[0].sizeDeg : 0.1) * 0.5;
+      if (hoverGeo && Math.hypot(g.lat - hoverGeo.lat, (g.lng - hoverGeo.lng) * LNG_COS) < minMove) return;
+      hoverGeo = { lat: g.lat, lng: g.lng };
     }
     if (!hoverRaf) {
       hoverRaf = true;
-      requestAnimationFrame(() => { hoverRaf = false; layoutHeat(); });
+      requestAnimationFrame(() => {
+        hoverRaf = false;
+        const now = affectedAround(hoverGeo);
+        const both = prevAffected ? prevAffected.concat(now) : now;
+        prevAffected = now;
+        layoutCells(both.length ? both : null);
+      });
     }
+  });
+
+  // Mittlere Maustaste: Ansicht kippen — Orbit-Ziel auf den Oberflaechenpunkt in
+  // Bildmitte setzen; Ziehen mit Mitteltaste (und Links) rotiert dann um diesen Punkt,
+  // sodass man z.B. flach von der Seite auf das Relief schauen kann.
+  addEventListener('pointerdown', e => {
+    if (phase !== 'explore' || e.button !== 1) return;
+    const p = ndcToSphere(0, 0);
+    if (!p) return;
+    const c = globe.controls();
+    c.target.set(p.x, p.y, p.z);
+    c.minDistance = 2; c.maxDistance = 420;
   });
 
   // Regler
@@ -469,7 +550,7 @@
     .addEventListener('input', e => fn(parseFloat(e.target.value)));
   bindSlider('s-opacity', v => { heat.opacity = v; if (heatMesh) heatMesh.material.opacity = v; });
   bindSlider('s-density', v => { heat.density = v; rebuildHeat(); });
-  bindSlider('s-relief', v => { heat.relief = v; layoutHeat(); });
+  bindSlider('s-relief', v => { heat.relief = v; layoutCells(null); });
   bindSlider('s-smooth', v => { heat.smooth = v; rebuildHeat(); });
   bindSlider('s-contrast', v => { heat.contrast = v; rebuildHeat(); });
   bindSlider('s-cold', v => { heat.cold = v; rebuildHeat(); });
@@ -536,9 +617,12 @@
     if (p === 'explore') {
       c.enabled = true; c.autoRotate = false;
       c.minDistance = 101.5; c.maxDistance = 320; // bis auf Stadt-Ebene ranzoombar
+      c.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN };
     } else {
       c.enabled = false;
       c.autoRotate = (p === 'survey'); c.autoRotateSpeed = 0.35;
+      c.target.set(0, 0, 0); // Kipp-Ziel der Mitteltaste zuruecksetzen
+      c.minDistance = 0; c.maxDistance = Infinity;
     }
   }
 
@@ -665,13 +749,13 @@
     const nVisitors = loadVisitors().filter(v => v.state === landName).length;
     return { rows, btwWinner, nVisitors };
   }
+  const landOf = f => (f && f.properties.__de) ? f.properties.name : null;
   globe.onPolygonHover(f => {
-    hovered = (phase === 'explore' && f && f.properties.__de) ? f : null;
-    globe.polygonStrokeColor(d => d.properties.__de
-      ? (d === hovered ? '#ffffff' : '#ececec')
-      : '#4a4a4a');
-    if (hovered) {
-      tooltip.innerHTML = `<h3>${hovered.properties.name}</h3>` +
+    const land = phase === 'explore' ? landOf(f) : null;
+    hoveredLand = land;
+    globe.polygonStrokeColor(strokeFn);
+    if (land) {
+      tooltip.innerHTML = `<h3>${land}</h3>` +
         `<div class="foot">Anklicken für Details</div>`;
       tooltip.style.display = 'block';
     } else tooltip.style.display = 'none';
@@ -704,7 +788,8 @@
   }
   document.getElementById('detail-close').addEventListener('click', closeDetail);
   globe.onPolygonClick(f => {
-    if (phase === 'explore' && f && f.properties.__de) renderDetail(f.properties.name);
+    const land = landOf(f);
+    if (phase === 'explore' && land) renderDetail(land);
   });
   addEventListener('mousemove', e => {
     if (tooltip.style.display !== 'block') return;
@@ -740,7 +825,7 @@
       tooltip.style.display = 'none';
       closeDetail();
       filter.age = 'Alle'; filter.party = 'Alle'; syncMenu();
-      hovered = null;
+      hoveredLand = null;
       visitor = null;
       answers.age = null; answers.party = null;
       ageInput.value = ''; locInput.value = '';
