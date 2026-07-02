@@ -239,9 +239,34 @@
   // ---------- Hologramm-Heat-Layer: lückenloses Hex-Gitter mit KDE + Zoom-LOD ----------
   // Hex-Gitter über ganz Deutschland; Wert je Zelle = Kernel-Dichte aller PLZ-Punkte
   // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
-  const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35 };
+  const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35, cold: 0.35 };
   const DE_BBOX = { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
-  const CELL_CAP = 18000;
+  const CELL_CAP = 40000;
+
+  // Deutschland-Maske: Länder-Polygone einmal in ein Canvas rastern -> O(1)-Inside-Test.
+  // Hexagone ausserhalb des Umrisses entfallen, innen wird lueckenlos gefuellt.
+  const maskInside = (() => {
+    const W = 1200, H = 1200;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#fff';
+    for (const f of laenderGeo.features)
+      for (const ring of featureRings(f)) {
+        cx.beginPath();
+        for (let i = 0; i < ring.length; i++) {
+          const x = (ring[i][0] - DE_BBOX.w) / (DE_BBOX.e - DE_BBOX.w) * W;
+          const y = (DE_BBOX.n - ring[i][1]) / (DE_BBOX.n - DE_BBOX.s) * H;
+          i ? cx.lineTo(x, y) : cx.moveTo(x, y);
+        }
+        cx.closePath(); cx.fill();
+      }
+    const img = cx.getImageData(0, 0, W, H).data;
+    return (lat, lng) => {
+      const x = Math.floor((lng - DE_BBOX.w) / (DE_BBOX.e - DE_BBOX.w) * W);
+      const y = Math.floor((DE_BBOX.n - lat) / (DE_BBOX.n - DE_BBOX.s) * H);
+      return x >= 0 && y >= 0 && x < W && y < H && img[(y * W + x) * 4 + 3] > 0;
+    };
+  })();
   const DEG = Math.PI / 180;
   const R = globe.getGlobeRadius ? globe.getGlobeRadius() : 100;
   const UNIT = R * DEG;                    // Weltlaenge von 1° Breite
@@ -255,9 +280,9 @@
 
   function cellSizeDeg() {
     const alt = globe.pointOfView().altitude;
-    let s = Math.max(0.045, Math.min(0.7, alt * 0.3)) / heat.density;
-    // harte Obergrenze für Zellzahl (KDE + InstancedMesh)
-    const est = ((DE_BBOX.n - DE_BBOX.s) / (s * 0.866)) * ((DE_BBOX.e - DE_BBOX.w) / (s / LNG_COS));
+    let s = Math.max(0.03, Math.min(0.7, alt * 0.3)) / heat.density;
+    // harte Obergrenze für Zellzahl (KDE + InstancedMesh); ~58 % der BBox liegen in Deutschland
+    const est = ((DE_BBOX.n - DE_BBOX.s) / (s * 0.866)) * ((DE_BBOX.e - DE_BBOX.w) / (s / LNG_COS)) * 0.58;
     if (est > CELL_CAP) s *= Math.sqrt(est / CELL_CAP);
     return s;
   }
@@ -284,6 +309,7 @@
     for (let lat = DE_BBOX.s; lat <= DE_BBOX.n; lat += rowH, row++) {
       const off = (row % 2) ? lngPitch / 2 : 0;
       for (let lng = DE_BBOX.w + off; lng <= DE_BBOX.e; lng += lngPitch) {
+        if (!maskInside(lat, lng)) continue; // nur innerhalb des Deutschland-Umrisses
         const hy = Math.floor(lat / cut), hx = Math.floor((lng * LNG_COS) / cut);
         let v = 0;
         for (let iy = hy - 1; iy <= hy + 1; iy++)
@@ -296,10 +322,11 @@
               if (d2 < cut2) v += p.w * Math.exp(-d2 * inv2s2);
             }
           }
-        if (v > 0) { cells.push({ lat, lng, v, sizeDeg }); if (v > max) max = v; }
+        // v==0 bleibt drin: Grundfüllung (kälteste Stufe), keine Löcher im Inland
+        cells.push({ lat, lng, v, sizeDeg }); if (v > max) max = v;
       }
     }
-    for (const c of cells) c.t = Math.pow(Math.min(1, c.v / max), heat.contrast);
+    for (const c of cells) c.t = max ? Math.pow(Math.min(1, c.v / max), heat.contrast) : 0;
     return cells;
   }
 
@@ -356,10 +383,12 @@
       const x = t * (HEAT_STOPS.length - 1);
       const j = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
       const f = x - j;
+      // Kälte-Regler: dimmt das kalte Ende Richtung Schwarz (cold=1 -> t=0 ist schwarz)
+      const dim = 1 - heat.cold * Math.pow(1 - t, 1.5);
       col.setRGB(
-        (HEAT_STOPS[j][0] + (HEAT_STOPS[j + 1][0] - HEAT_STOPS[j][0]) * f) / 255,
-        (HEAT_STOPS[j][1] + (HEAT_STOPS[j + 1][1] - HEAT_STOPS[j][1]) * f) / 255,
-        (HEAT_STOPS[j][2] + (HEAT_STOPS[j + 1][2] - HEAT_STOPS[j][2]) * f) / 255);
+        (HEAT_STOPS[j][0] + (HEAT_STOPS[j + 1][0] - HEAT_STOPS[j][0]) * f) / 255 * dim,
+        (HEAT_STOPS[j][1] + (HEAT_STOPS[j + 1][1] - HEAT_STOPS[j][1]) * f) / 255 * dim,
+        (HEAT_STOPS[j][2] + (HEAT_STOPS[j + 1][2] - HEAT_STOPS[j][2]) * f) / 255 * dim);
       heatMesh.setColorAt(i, col);
     }
     if (heatMesh.instanceColor) heatMesh.instanceColor.needsUpdate = true;
@@ -414,6 +443,7 @@
   bindSlider('s-relief', v => { heat.relief = v; layoutHeat(); });
   bindSlider('s-smooth', v => { heat.smooth = v; rebuildHeat(); });
   bindSlider('s-contrast', v => { heat.contrast = v; rebuildHeat(); });
+  bindSlider('s-cold', v => { heat.cold = v; rebuildHeat(); });
 
   function mkOpts(id, values, key) {
     const box = document.getElementById(id);
