@@ -84,16 +84,16 @@
     const c = HEAT_STOPS[i].map((v, k) => Math.round(v + (HEAT_STOPS[i + 1][k] - v) * f));
     return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
   }
-  // Normierung: max. Zellgewicht der aktuellen Filterung über grobes 0,5°-Raster schätzen
+  // Normierung: max. Zellgewicht der aktuellen Filterung über grobes Raster (~Hexzellen-Größe) schätzen
   let heatCap = 10;
   function calcCap(pts) {
     const m = new Map(); let max = 0;
     for (const p of pts) {
-      const k = Math.round(p.lat * 2) + ',' + Math.round(p.lng * 2);
+      const k = Math.round(p.lat * 6) + ',' + Math.round(p.lng * 6);
       const v = (m.get(k) || 0) + p.w;
       m.set(k, v); if (v > max) max = v;
     }
-    return Math.max(4, max);
+    return Math.max(1, max);
   }
   const heatT = w => Math.min(1, Math.log1p(w) / Math.log1p(heatCap));
 
@@ -121,12 +121,14 @@
     .hexBinPointLat(p => p.lat)
     .hexBinPointLng(p => p.lng)
     .hexBinPointWeight(p => p.w)
-    .hexBinResolution(3)
-    .hexMargin(0.2)
-    .hexAltitude(d => 0.003 + heatT(d.sumWeight) * 0.05)
+    // feines Raster (~Stadt-Ebene), flacher Teppich statt Pfeiler
+    .hexBinResolution(5)
+    .hexMargin(0.12)
+    .hexAltitude(d => 0.0015 + heatT(d.sumWeight) * 0.01)
     .hexTopColor(d => heatColor(heatT(d.sumWeight), 0.95))
     .hexSideColor(d => heatColor(heatT(d.sumWeight), 0.5))
-    .hexTransitionDuration(2500 / FAST)
+    .hexBinMerge(true) // ein Mesh statt ~4k Einzel-Hexes — noetig fuer fluessiges Zoomen/Drehen
+    .hexTransitionDuration(0)
     .htmlAltitude(0.012)
     .htmlElement(() => {
       const el = document.createElement('div');
@@ -209,9 +211,36 @@
     `${filter.age === 'Alle' ? 'alle Altersgruppen' : filter.age + ' Jahre'} · ` +
     `${filter.party === 'Alle' ? 'alle Parteien' : filter.party}`;
 
+  // Heat-Basisraster: jeder PLZ-Ort wird ein Punkt, Gewicht = Länder-Stimmen des Filters
+  // verteilt auf die PLZ des Landes × Altersgruppen-Anteil. PLZ-Dichte ≈ Bevölkerungsdichte
+  // → Städte werden heiß, ganz Deutschland ist bedeckt.
+  const plzCountByLand = {};
+  for (const e of Object.values(plzMap))
+    plzCountByLand[e[3]] = (plzCountByLand[e[3]] || 0) + 1;
+  const bracketShare = label =>
+    label === 'Alle' ? 1 : (BRACKETS.find(b => b.label === label) || { w: 0.15 }).w;
+
+  function buildHeatData() {
+    const ageShare = bracketShare(filter.age);
+    const pts = [];
+    for (const e of Object.values(plzMap)) {
+      const land = landByName[e[3]];
+      if (!land) continue;
+      const votes = filter.party === 'Alle'
+        ? Object.values(land.votes).reduce((s, v) => s + v, 0)
+        : (land.votes[filter.party] || 0);
+      const w = votes * ageShare / plzCountByLand[e[3]];
+      if (w > 0) pts.push({ lat: e[0], lng: e[1], w });
+    }
+    return pts;
+  }
+
   function applyFilter() {
-    const pts = heatPoints().filter(matchesFilter);
+    const pts = buildHeatData();
     heatCap = calcCap(pts);
+    // echte Besucher, die dem Filter entsprechen, heizen ihre Zelle sichtbar auf
+    for (const v of loadVisitors().map(visitorPoint).filter(matchesFilter))
+      pts.push({ lat: v.lat, lng: v.lng, w: heatCap * 0.6 });
     globe.hexBinPointsData(pts);
     if (detailLand) renderDetail(detailLand);
   }
