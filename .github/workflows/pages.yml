@@ -26,10 +26,13 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: art/ als Artefakt hochladen (die Galerie = Seitenwurzel)
+      # Repo-Root deployen (nicht art/): der Branch-Quelle-Build von Pages serviert
+      # ebenfalls den Repo-Root — beide Deploys liefern so dasselbe URL-Schema
+      # (…/art/…), statt sich gegenseitig das Schema zu kippen.
+      - name: Repo-Root als Artefakt hochladen (index.html leitet nach art/ um)
         uses: actions/upload-pages-artifact@v3
         with:
-          path: art
+          path: .
       - name: Deployen
         id: deployment
         uses: actions/deploy-pages@v4
