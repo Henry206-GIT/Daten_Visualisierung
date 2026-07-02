@@ -281,7 +281,7 @@
   // ---------- Hologramm-Heat-Layer: lückenloses Hex-Gitter mit KDE + Zoom-LOD ----------
   // Hex-Gitter über ganz Deutschland; Wert je Zelle = Kernel-Dichte aller PLZ-Punkte
   // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
-  const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35, cold: 0.35 };
+  const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35, cold: 1 };
   const DE_BBOX = { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
   const CELL_CAP = 150000;
 
