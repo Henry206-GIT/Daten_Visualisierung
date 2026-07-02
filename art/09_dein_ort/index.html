@@ -86,6 +86,11 @@
     cursor:pointer; letter-spacing:.04em; transition:background .2s, color .2s; }
   #menu .opts button:hover { border-color:#fff; color:#fff; }
   #menu .opts button.on { background:#fff; color:#000; border-color:#fff; }
+  #menu .sliders label { display:flex; align-items:center; justify-content:space-between;
+    gap:.8em; font-size:.72rem; color:rgba(255,255,255,.65); letter-spacing:.06em;
+    margin:.3em 0; }
+  #menu .sliders input[type=range] { flex:1; max-width:150px; accent-color:#fff;
+    height:2px; cursor:pointer; }
   #legend { margin-top:.9em; }
   #legend .bar { height:8px; background:linear-gradient(90deg,
     #313695, #4575b4, #74add1, #fee090, #f46d43, #a50026); border:1px solid rgba(255,255,255,.25); }
@@ -170,6 +175,12 @@
   <div class="opts" id="f-age"></div>
   <div class="grp">Partei</div>
   <div class="opts" id="f-party"></div>
+  <div class="grp">Ansicht</div>
+  <div class="sliders">
+    <label>Transparenz <input id="s-opacity" type="range" min="0.15" max="1" step="0.05" value="0.55"></label>
+    <label>Blöcke <input id="s-density" type="range" min="0.5" max="2.5" step="0.1" value="1"></label>
+    <label>Relief <input id="s-relief" type="range" min="0" max="2.5" step="0.1" value="1"></label>
+  </div>
   <div id="legend">
     <div class="bar"></div>
     <div class="lbl"><span>kalt · wenige</span><span>heiß · viele</span></div>
@@ -191,14 +202,17 @@
 <div id="fade"></div>
 
 <script>
-  (function () {
-    function load(src, onload) {
-      var s = document.createElement('script');
-      s.src = src; s.onload = onload; document.head.appendChild(s);
+  (async function () {
+    function load(src) {
+      return new Promise(function (res) {
+        var s = document.createElement('script');
+        s.src = src; s.onload = res; document.head.appendChild(s);
+      });
     }
-    load('https://unpkg.com/globe.gl@2.46.1/dist/globe.gl.min.js', function () {
-      load('app.js?v=' + Date.now());
-    });
+    await load('https://unpkg.com/globe.gl@2.46.1/dist/globe.gl.min.js');
+    // gleiche three-Revision wie globe.gl-Bundle (>=0.179) fuer eigene Heat-Meshes
+    window.THREE = await import('https://unpkg.com/three@0.185.1/build/three.module.js');
+    load('app.js?v=' + Date.now());
   })();
 </script>
 </body>

@@ -77,14 +77,7 @@
     [0x31, 0x36, 0x95], [0x45, 0x75, 0xb4], [0x74, 0xad, 0xd1],
     [0xfe, 0xe0, 0x90], [0xf4, 0x6d, 0x43], [0xa5, 0x00, 0x26],
   ];
-  function heatColor(t, alpha) {
-    const x = Math.max(0, Math.min(1, t)) * (HEAT_STOPS.length - 1);
-    const i = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
-    const f = x - i;
-    const c = HEAT_STOPS[i].map((v, k) => Math.round(v + (HEAT_STOPS[i + 1][k] - v) * f));
-    return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
-  }
-  // Normierung: max. Zellgewicht der aktuellen Filterung über grobes Raster (~Hexzellen-Größe) schätzen
+  // Normierung: max. Zellgewicht der aktuellen Filterung über grobes Raster schätzen
   let heatCap = 10;
   function calcCap(pts) {
     const m = new Map(); let max = 0;
@@ -95,7 +88,6 @@
     }
     return Math.max(1, max);
   }
-  const heatT = w => Math.min(1, Math.log1p(w) / Math.log1p(heatCap));
 
   // ---------- Globus ----------
   let hovered = null;
@@ -114,21 +106,13 @@
     .polygonStrokeColor(f => f.properties.__de
       ? (f === hovered ? '#ffffff' : '#ececec')
       : '#4a4a4a')
-    .polygonAltitude(f => f === hovered ? 0.012 : 0.006)
+    .polygonAltitude(0.006) // konstant — angehobene Caps wuerden die Heat-Quadrate verdecken
     .polygonLabel(null)
     .polygonsTransitionDuration(300)
     // "Heatmap" als H3-HexBins: KDE-heatmapsLayer rendert auf schwachen GPUs nicht (WebGPU-Fallback)
     .hexBinPointLat(p => p.lat)
     .hexBinPointLng(p => p.lng)
     .hexBinPointWeight(p => p.w)
-    // feines Raster (~Stadt-Ebene), flacher Teppich statt Pfeiler
-    .hexBinResolution(5)
-    .hexMargin(0.12)
-    .hexAltitude(d => 0.0015 + heatT(d.sumWeight) * 0.01)
-    .hexTopColor(d => heatColor(heatT(d.sumWeight), 0.95))
-    .hexSideColor(d => heatColor(heatT(d.sumWeight), 0.5))
-    .hexBinMerge(true) // ein Mesh statt ~4k Einzel-Hexes — noetig fuer fluessiges Zoomen/Drehen
-    .hexTransitionDuration(0)
     .htmlAltitude(0.012)
     .htmlElement(() => {
       const el = document.createElement('div');
@@ -236,14 +220,155 @@
   }
 
   function applyFilter() {
-    const pts = buildHeatData();
-    heatCap = calcCap(pts);
-    // echte Besucher, die dem Filter entsprechen, heizen ihre Zelle sichtbar auf
-    for (const v of loadVisitors().map(visitorPoint).filter(matchesFilter))
-      pts.push({ lat: v.lat, lng: v.lng, w: heatCap * 0.6 });
-    globe.hexBinPointsData(pts);
+    rebuildHeat();
     if (detailLand) renderDetail(detailLand);
   }
+
+  // ---------- Hologramm-Heat-Layer: instanzierte Quadrate mit Zoom-LOD ----------
+  // Eigenes InstancedMesh statt hexBin: Quadrate, Hover-Anhebung, Aufloesung folgt Zoom.
+  const heat = { opacity: 0.55, density: 1, relief: 1 };
+  const DEG = Math.PI / 180;
+  const R = globe.getGlobeRadius ? globe.getGlobeRadius() : 100;
+  const UNIT = R * DEG;                    // Weltlaenge von 1° Breite
+  const LNG_COS = Math.cos(51 * DEG);      // Quadrat-Korrektur fuer Deutschland-Breite
+  let heatMesh = null;
+  let heatCells = [];                      // {lat, lng, t, sizeDeg}
+  let heatVisible = false;
+  let hoverGeo = null;                     // {lat,lng} unter der Maus
+  const dummy = () => new THREE.Object3D();
+  const tmpObj = { o: null };
+
+  function cellSizeDeg() {
+    const alt = globe.pointOfView().altitude;
+    return Math.max(0.03, Math.min(0.7, alt * 0.3)) / heat.density;
+  }
+
+  function binCells(sizeDeg) {
+    const pts = buildHeatData();
+    heatCap = calcCap(pts);
+    for (const v of loadVisitors().map(visitorPoint).filter(matchesFilter))
+      pts.push({ lat: v.lat, lng: v.lng, w: heatCap * 0.6 });
+    const lngStep = sizeDeg / LNG_COS;
+    const bins = new Map(); let max = 0;
+    for (const p of pts) {
+      const iy = Math.floor(p.lat / sizeDeg), ix = Math.floor(p.lng / lngStep);
+      const k = iy + '|' + ix;
+      const b = bins.get(k) || { lat: (iy + 0.5) * sizeDeg, lng: (ix + 0.5) * lngStep, w: 0 };
+      b.w += p.w; bins.set(k, b); if (b.w > max) max = b.w;
+    }
+    const cells = [];
+    for (const b of bins.values())
+      cells.push({ lat: b.lat, lng: b.lng, t: Math.pow(Math.min(1, b.w / max), 0.35), sizeDeg });
+    return cells;
+  }
+
+  function cellMatrix(o, c, elevate) {
+    const wSide = c.sizeDeg * UNIT * 0.86; // kleine Fuge zwischen den Quadraten
+    // Hoehe proportional zur Zellgroesse — sonst werden Zellen beim Reinzoomen zu Spikes
+    const h = wSide * (0.2 + c.t * 2.2 * heat.relief) * elevate;
+    const base = globe.getCoords(c.lat, c.lng, 0.0075); // knapp ueber den Polygon-Caps (0.006)
+    const r = Math.hypot(base.x, base.y, base.z);
+    const f = (r + h / 2) / r;
+    o.position.set(base.x * f, base.y * f, base.z * f);
+    o.lookAt(0, 0, 0);
+    o.scale.set(wSide, wSide, Math.max(wSide * 0.1, h));
+    o.updateMatrix();
+    return o.matrix;
+  }
+
+  function layoutHeat() {
+    if (!heatMesh) return;
+    const o = tmpObj.o || (tmpObj.o = dummy());
+    const rad = heatCells.length ? heatCells[0].sizeDeg * 3 : 1;
+    for (let i = 0; i < heatCells.length; i++) {
+      const c = heatCells[i];
+      let elevate = 1;
+      if (hoverGeo) {
+        const d = Math.hypot(c.lat - hoverGeo.lat, (c.lng - hoverGeo.lng) * LNG_COS);
+        elevate = 1 + 2.4 * Math.exp(-(d * d) / (rad * rad));
+      }
+      heatMesh.setMatrixAt(i, cellMatrix(o, c, elevate));
+    }
+    heatMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  function rebuildHeat() {
+    const sizeDeg = cellSizeDeg();
+    heatCells = binCells(sizeDeg);
+    if (heatMesh) {
+      globe.scene().remove(heatMesh);
+      heatMesh.geometry.dispose();
+      heatMesh.material.dispose();
+    }
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshBasicMaterial({
+      transparent: true, opacity: heat.opacity,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    mat.toneMapped = false; // Tonemapping waescht die Thermal-Farben aus
+    heatMesh = new THREE.InstancedMesh(geo, mat, heatCells.length);
+    const col = new THREE.Color();
+    for (let i = 0; i < heatCells.length; i++) {
+      const t = heatCells[i].t;
+      const x = t * (HEAT_STOPS.length - 1);
+      const j = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
+      const f = x - j;
+      col.setRGB(
+        (HEAT_STOPS[j][0] + (HEAT_STOPS[j + 1][0] - HEAT_STOPS[j][0]) * f) / 255,
+        (HEAT_STOPS[j][1] + (HEAT_STOPS[j + 1][1] - HEAT_STOPS[j][1]) * f) / 255,
+        (HEAT_STOPS[j][2] + (HEAT_STOPS[j + 1][2] - HEAT_STOPS[j][2]) * f) / 255);
+      heatMesh.setColorAt(i, col);
+    }
+    if (heatMesh.instanceColor) heatMesh.instanceColor.needsUpdate = true;
+    heatMesh.visible = heatVisible;
+    layoutHeat();
+    globe.scene().add(heatMesh);
+  }
+
+  // LOD: bei Zoom-Aenderung > 20 % neu rastern (entprellt)
+  let lastCellSize = 0, lodTimer = null;
+  globe.controls().addEventListener('change', () => {
+    if (phase !== 'explore' || !heatVisible) return;
+    const s = cellSizeDeg();
+    if (lastCellSize && Math.abs(s - lastCellSize) / lastCellSize < 0.2) return;
+    clearTimeout(lodTimer);
+    lodTimer = setTimeout(() => { lastCellSize = cellSizeDeg(); rebuildHeat(); }, 180);
+  });
+
+  // Hover: Maus -> Kugelpunkt (Ray-Sphere), Zellen darunter heben sich
+  let hoverRaf = false;
+  addEventListener('mousemove', e => {
+    if (phase !== 'explore' || !heatMesh) return;
+    const cam = globe.camera();
+    const ndc = new THREE.Vector3((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1, 0.5);
+    ndc.unproject(cam);
+    const ox = cam.position.x, oy = cam.position.y, oz = cam.position.z;
+    let dx = ndc.x - ox, dy = ndc.y - oy, dz = ndc.z - oz;
+    const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+    const b = 2 * (ox * dx + oy * dy + oz * dz);
+    const cq = ox * ox + oy * oy + oz * oz - R * R;
+    const disc = b * b - 4 * cq;
+    if (disc < 0) { hoverGeo = null; }
+    else {
+      const tHit = (-b - Math.sqrt(disc)) / 2;
+      if (tHit < 0) { hoverGeo = null; }
+      else {
+        const g = globe.toGeoCoords({ x: ox + dx * tHit, y: oy + dy * tHit, z: oz + dz * tHit });
+        hoverGeo = { lat: g.lat, lng: g.lng };
+      }
+    }
+    if (!hoverRaf) {
+      hoverRaf = true;
+      requestAnimationFrame(() => { hoverRaf = false; layoutHeat(); });
+    }
+  });
+
+  // Regler
+  const bindSlider = (id, fn) => document.getElementById(id)
+    .addEventListener('input', e => fn(parseFloat(e.target.value)));
+  bindSlider('s-opacity', v => { heat.opacity = v; if (heatMesh) heatMesh.material.opacity = v; });
+  bindSlider('s-density', v => { heat.density = v; rebuildHeat(); });
+  bindSlider('s-relief', v => { heat.relief = v; layoutHeat(); });
 
   function mkOpts(id, values, key) {
     const box = document.getElementById(id);
@@ -306,7 +431,7 @@
     const c = globe.controls();
     if (p === 'explore') {
       c.enabled = true; c.autoRotate = false;
-      c.minDistance = 115; c.maxDistance = 320;
+      c.minDistance = 101.5; c.maxDistance = 320; // bis auf Stadt-Ebene ranzoombar
     } else {
       c.enabled = false;
       c.autoRotate = (p === 'survey'); c.autoRotateSpeed = 0.35;
@@ -411,6 +536,8 @@
     if (persist) saveVisitor(visitor);
     globe.htmlElementsData([{ lat: visitor.lat, lng: visitor.lng }]);
     setFilterFromVisitor();
+    heatVisible = true;
+    lastCellSize = cellSizeDeg();
     applyFilter();
     setPhase('explore');
     armIdle();
@@ -436,10 +563,9 @@
   }
   globe.onPolygonHover(f => {
     hovered = (phase === 'explore' && f && f.properties.__de) ? f : null;
-    globe.polygonAltitude(d => d === hovered ? 0.012 : 0.006)
-      .polygonStrokeColor(d => d.properties.__de
-        ? (d === hovered ? '#ffffff' : '#ececec')
-        : '#4a4a4a');
+    globe.polygonStrokeColor(d => d.properties.__de
+      ? (d === hovered ? '#ffffff' : '#ececec')
+      : '#4a4a4a');
     if (hovered) {
       tooltip.innerHTML = `<h3>${hovered.properties.name}</h3>` +
         `<div class="foot">Anklicken für Details</div>`;
@@ -503,7 +629,10 @@
     fadeEl.classList.add('on');
     setTimeout(() => {
       globe.htmlElementsData([]);
-      globe.hexBinPointsData([]);
+      heatVisible = false;
+      hoverGeo = null;
+      lastCellSize = 0;
+      if (heatMesh) heatMesh.visible = false;
       tooltip.style.display = 'none';
       closeDetail();
       filter.age = 'Alle'; filter.party = 'Alle'; syncMenu();
