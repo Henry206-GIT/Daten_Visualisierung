@@ -104,13 +104,36 @@
 
   // ---------- Globus ----------
   let hoveredLand = null;  // Name des Bundeslands unter der Maus
-  let kreisNear = false;   // Kreis-Grenzen erst beim Ranzoomen betonen
+  // fern: schwarze Trennlinien auf den farbigen Flächen — weisse Strokes verrauschen
+  // bei kleinem Massstab zu Sprenkeln (hochaufgeloeste Geometrie)
   const strokeFn = f => f.properties.__de
-    ? (f.properties.name === hoveredLand ? '#ffffff' : '#ececec')
+    ? (f.properties.name === hoveredLand ? '#ffffff'
+      : stage === 'fern' ? '#000000' : '#ececec')
     : '#4a4a4a';
+  // Kreis-Grenzen: nah = betont, mittel = dezent, fern = aus (stoert das Choropleth)
   const pathColorFn = p => p.kreis
-    ? (kreisNear ? '#5a5a5a' : '#1a1a1a')
+    ? (stage === 'nah' ? '#5a5a5a' : stage === 'mittel' ? '#1a1a1a' : '#000000')
     : 'rgba(255,255,255,0.10)';
+
+  // ---------- Drei Zoom-Stufen ----------
+  // fern:   Bundesland-Choropleth (Caps thermal eingefärbt), Hexes aus
+  // mittel: Hex-Teppich, Kreise dezent
+  // nah:    feines Raster (LOD), Kreis-Grenzen betont
+  let stage = 'mittel';
+  let landHeat = {}; // Land-Name -> t (0..1) fuer die Fern-Stufe
+  function heatCSS(t, alpha) {
+    const x = Math.max(0, Math.min(1, t)) * (HEAT_STOPS.length - 1);
+    const j = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
+    const f = x - j;
+    const dim = 1 - heat.cold * Math.pow(1 - t, 1.5);
+    const c = [0, 1, 2].map(k =>
+      Math.round((HEAT_STOPS[j][k] + (HEAT_STOPS[j + 1][k] - HEAT_STOPS[j][k]) * f) * dim));
+    return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+  }
+  // Achtung: Cap-Farben mit Alpha < 1 rendern als Dither-Sprenkel (wie rgba-Strokes) — opak halten
+  const capFn = f => (stage === 'fern' && phase === 'explore' && heatVisible && f.properties.__de)
+    ? heatCSS(landHeat[f.properties.name] || 0, 1)
+    : 'rgba(0,0,0,0.88)';
   const globe = Globe()(document.getElementById('globe'))
     .width(innerWidth).height(innerHeight)
     .backgroundColor('#000000')
@@ -121,7 +144,7 @@
     .pathColor(pathColorFn)
     .pathTransitionDuration(0)
     .polygonsData(features)
-    .polygonCapColor(() => 'rgba(0,0,0,0.88)')
+    .polygonCapColor(capFn)
     .polygonSideColor(() => 'rgba(0,0,0,0)')
     // Achtung: rgba-Strokes rendern als Punktstaub (transparente Lines) — opak halten
     .polygonStrokeColor(strokeFn)
@@ -278,6 +301,52 @@
     if (detailLand) renderDetail(detailLand);
   }
 
+  // Fern-Stufe: Anteil der Filter-Treffer an allen Stimmen je Land, normiert aufs Maximum
+  function computeLandHeat() {
+    const fac = ageFactorFn();
+    const match = {}, total = {};
+    for (const wk of wkList) {
+      const land = wk[3];
+      for (const [p, n] of Object.entries(wk[2])) {
+        total[land] = (total[land] || 0) + n;
+        if (filter.party === 'Alle' || p === filter.party)
+          match[land] = (match[land] || 0) + n * fac(land, p);
+      }
+    }
+    let maxShare = 0;
+    const share = {};
+    for (const l of Object.keys(total)) {
+      share[l] = total[l] ? (match[l] || 0) / total[l] : 0;
+      if (share[l] > maxShare) maxShare = share[l];
+    }
+    landHeat = {};
+    for (const l of Object.keys(share))
+      landHeat[l] = maxShare ? Math.pow(share[l] / maxShare, heat.contrast) : 0;
+  }
+
+  const STAGE_FAR = 1.0, STAGE_NEAR = 0.5, HYST = 0.12;
+  function stageFor(alt) {
+    // Hysterese: Stufe wechselt erst deutlich hinter der Schwelle (kein Flackern)
+    if (stage === 'fern') return alt < STAGE_FAR - HYST ? 'mittel' : 'fern';
+    if (stage === 'nah') return alt > STAGE_NEAR + HYST * 0.5 ? 'mittel' : 'nah';
+    if (alt >= STAGE_FAR + HYST) return 'fern';
+    if (alt <= STAGE_NEAR - HYST * 0.5) return 'nah';
+    return 'mittel';
+  }
+  function updateStage(force) {
+    const s = stageFor(globe.pointOfView().altitude);
+    if (!force && s === stage) return;
+    stage = s;
+    // fern: Kreis-Pfade ganz raus — als Linien ueber den farbigen Caps zerhacken sie
+    // das Choropleth zu Sprenkeln (auch schwarz gefaerbt bleiben sie sichtbar)
+    globe.pathsData(stage === 'fern' ? grid : grid.concat(kreisPaths));
+    globe.pathColor(p => pathColorFn(p)); // frische Wrapper: gleiche Referenz triggert kein Update
+    globe.polygonStrokeColor(d => strokeFn(d));
+    if (s === 'fern') computeLandHeat();
+    if (heatMesh) heatMesh.visible = heatVisible && s !== 'fern';
+    globe.polygonCapColor(f => capFn(f));
+  }
+
   // ---------- Hologramm-Heat-Layer: lückenloses Hex-Gitter mit KDE + Zoom-LOD ----------
   // Hex-Gitter über ganz Deutschland; Wert je Zelle = Kernel-Dichte aller PLZ-Punkte
   // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
@@ -424,6 +493,7 @@
   }
 
   function rebuildHeat() {
+    if (Q.has('noheat')) return; // Diagnose: Choropleth ohne Hex-Layer betrachten
     const sizeDeg = cellSizeDeg();
     heatCells = binCells(sizeDeg);
     if (heatMesh) {
@@ -474,18 +544,20 @@
       heatMesh.setColorAt(i, col);
     }
     if (heatMesh.instanceColor) heatMesh.instanceColor.needsUpdate = true;
-    heatMesh.visible = heatVisible;
+    heatMesh.visible = heatVisible && stage !== 'fern';
     layoutCells(null);
     globe.scene().add(heatMesh);
+    // Fern-Choropleth mit denselben Filter-/Regler-Werten aktuell halten
+    computeLandHeat();
+    globe.polygonCapColor(f => capFn(f));
   }
 
   // LOD: bei Zoom-Aenderung > 20 % neu rastern (entprellt); Kreis-Grenzen beim Ranzoomen betonen
   let lastCellSize = 0, lodTimer = null;
   globe.controls().addEventListener('change', () => {
     if (phase !== 'explore') return;
-    const near = globe.pointOfView().altitude < 0.5;
-    if (near !== kreisNear) { kreisNear = near; globe.pathColor(pathColorFn); }
-    if (!heatVisible) return;
+    updateStage(false);
+    if (!heatVisible || stage === 'fern') return; // fern: Choropleth, kein Hex-Rebuild
     const s = cellSizeDeg();
     if (lastCellSize && Math.abs(s - lastCellSize) / lastCellSize < 0.2) return;
     clearTimeout(lodTimer);
@@ -731,6 +803,7 @@
     lastCellSize = cellSizeDeg();
     applyFilter();
     setPhase('explore');
+    updateStage(true); // Zoom-Stufe zur Landehoehe initialisieren
     armIdle();
   }
 
@@ -756,7 +829,7 @@
   globe.onPolygonHover(f => {
     const land = phase === 'explore' ? landOf(f) : null;
     hoveredLand = land;
-    globe.polygonStrokeColor(strokeFn);
+    globe.polygonStrokeColor(d => strokeFn(d));
     if (land) {
       tooltip.innerHTML = `<h3>${land}</h3>` +
         `<div class="foot">Anklicken für Details</div>`;
@@ -835,12 +908,18 @@
       acList.innerHTML = ''; locHint.textContent = '';
       globe.pointOfView(START_POV, 0);
       setPhase('survey');
+      stage = 'mittel';
+      globe.polygonCapColor(f => capFn(f)); // Choropleth aus, Caps wieder schwarz
       showStep(0);
       fadeEl.classList.remove('on');
     }, 1600);
   }
 
   // ---------- Dev-Hooks ----------
+  if (Q.has('dbg')) setInterval(() => {
+    document.title = [stage, phase, heatMesh && heatMesh.visible,
+      globe.pointOfView().altitude.toFixed(2), (landHeat['Bayern'] || 0).toFixed(2)].join('|');
+  }, 400);
   if (Q.has('pov')) {
     const [la, ln, al] = Q.get('pov').split(',').map(Number);
     globe.pointOfView({ lat: la, lng: ln, altitude: al }, 0);
