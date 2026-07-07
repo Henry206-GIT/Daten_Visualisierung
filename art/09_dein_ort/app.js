@@ -492,8 +492,11 @@
     lodTimer = setTimeout(() => { lastCellSize = cellSizeDeg(); rebuildHeat(); }, 180);
   });
 
-  // Maus/NDC -> Punkt auf der Kugeloberflaeche (Ray-Sphere-Schnitt, R=100)
-  function ndcToSphere(nx, ny) {
+  // Maus/NDC -> Punkt auf der Kugel. hitR = Radius der Trefffläche: für den Hover die
+  // Höhe der Heat-Oberfläche (nicht R=100) — sonst liegt der Treffpunkt bei schrägem
+  // Blick sichtbar hinter dem Cursor (Offset).
+  const R_HEAT = R * 1.008;
+  function ndcToSphere(nx, ny, hitR = R) {
     const cam = globe.camera();
     const ndc = new THREE.Vector3(nx, ny, 0.5);
     ndc.unproject(cam);
@@ -501,7 +504,7 @@
     let dx = ndc.x - ox, dy = ndc.y - oy, dz = ndc.z - oz;
     const dl = Math.hypot(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
     const b = 2 * (ox * dx + oy * dy + oz * dz);
-    const cq = ox * ox + oy * oy + oz * oz - R * R;
+    const cq = ox * ox + oy * oy + oz * oz - hitR * hitR;
     const disc = b * b - 4 * cq;
     if (disc < 0) return null;
     const tHit = (-b - Math.sqrt(disc)) / 2;
@@ -513,7 +516,7 @@
   let hoverRaf = false;
   addEventListener('mousemove', e => {
     if (phase !== 'explore' || !heatMesh) return;
-    const p = ndcToSphere((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    const p = ndcToSphere((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1, R_HEAT);
     if (!p) { if (!hoverGeo) return; hoverGeo = null; }
     else {
       const g = globe.toGeoCoords(p);
