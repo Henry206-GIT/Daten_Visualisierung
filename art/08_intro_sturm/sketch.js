@@ -10,7 +10,7 @@ let DATA, FARBEN;
 let parts = [];                 // Pool
 let spheres = [];               // {party, votes, n, col, isCore}
 let selLand = null, selParty = null;
-let params = { ppp: 1200, core: 1.15, orbit: 1.35, sphere: 0.95 };
+let params = { ppp: 600, core: 1.0, orbit: 1.0, sphere: 1.0 };
 let cap = {};
 let firstLayout = true;         // erster Aufbau: Positionen direkt setzen (sonst morphen)
 let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
@@ -76,8 +76,20 @@ function wireIntro() {
   document.getElementById('name-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') start();
   });
-  document.getElementById('replay').addEventListener('click', () => {  // Sequenz neu (Test)
-    flightFixed = null; appState = 'intro'; setBody('intro');
+  document.getElementById('replay').addEventListener('click', () => {
+    // Zurück auf Anfangszustand wie nach frischem Laden — Regler-Werte bleiben erhalten
+    flightFixed = null;
+    selLand = null; selParty = null;
+    document.getElementById('sel-land').value = '';
+    updatePartyOptions(null);
+    if (textMode) {
+      textMode = false;
+      const t = document.getElementById('toggle-text');
+      t.classList.remove('on'); t.textContent = 'Kürzel: aus';
+    }
+    document.getElementById('name-input').value = '';
+    rebuild(); // neutrale Sphäre
+    appState = 'intro'; setBody('intro');
   });
 }
 
