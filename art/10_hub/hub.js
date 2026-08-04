@@ -41,12 +41,35 @@
   const setState = s => { hubState = s; body.className = s; };
 
   const CENTER = { x: 50, y: 46 };
+  // Flug per RAF: easeInOutCubic (sanft beschleunigen + abbremsen) und leichte
+  // Bogenkurve quer zur Flugrichtung — wirkt wie fliegen, nicht wie schieben.
+  const pos = { x: 50, y: 24 };
+  let flightId = 0;
   function flyTo(xPct, yPct, sizePx, ms = 1100) {
-    particle.style.transitionDuration = `${ms}ms, ${ms}ms, .9s, .9s, .6s`;
-    particle.style.left = xPct + '%';
-    particle.style.top = yPct + '%';
+    const id = ++flightId; // laufenden Flug abbrechen, wenn ein neuer startet
+    const sx = pos.x, sy = pos.y;
+    const dx = xPct - sx, dy = yPct - sy;
+    const dist = Math.hypot(dx, dy);
+    const arc = Math.min(8, dist * 0.22);            // Bogenhöhe in %-Punkten
+    const nl = dist || 1;
+    const nx = -dy / nl, ny = dx / nl;               // Normale zur Flugrichtung
     if (sizePx) { particle.style.width = sizePx + 'px'; particle.style.height = sizePx + 'px'; }
-    return new Promise(res => setTimeout(res, ms + 80));
+    const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    return new Promise(res => {
+      const t0 = performance.now();
+      (function step(now) {
+        if (id !== flightId) return res();
+        const t = Math.min(1, (now - t0) / ms);
+        const e = ease(t);
+        const bow = Math.sin(Math.PI * e) * arc;
+        pos.x = sx + dx * e + nx * bow;
+        pos.y = sy + dy * e + ny * bow;
+        particle.style.left = pos.x + '%';
+        particle.style.top = pos.y + '%';
+        if (t < 1) requestAnimationFrame(step);
+        else { pos.x = xPct; pos.y = yPct; res(); }
+      })(t0);
+    });
   }
   const centerOf = el => {
     const r = el.getBoundingClientRect();
@@ -150,7 +173,7 @@
     });
   document.addEventListener('click', e => {
     if (hubState !== 'portal') return;
-    if (e.target.closest('.portal, .sub-circle')) return;
+    if (e.target.closest('.ring, .sub-circle')) return;
     backToMenu(); // Klick ins Leere: eine Stufe zurück
   });
 
@@ -254,6 +277,8 @@
       visitor.name = ''; visitor.age = null; visitor.party = null; visitor.loc = null;
       oName.value = ''; oAge.value = ''; oLoc.value = ''; oAc.innerHTML = '';
       pname.textContent = '';
+      flightId++; // laufenden Flug stoppen
+      pos.x = 50; pos.y = 24;
       particle.style.left = '50%'; particle.style.top = '24%';
       particle.style.width = '44px'; particle.style.height = '44px';
       setState('onboarding');
