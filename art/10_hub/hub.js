@@ -78,31 +78,41 @@
 
   // ---------- Portale ----------
   const PORTALS = {
-    p08: { el: document.getElementById('p-08'), url: '../08_intro_sturm/' },
+    p08: { el: document.getElementById('p-08'), url: '../08_intro_sturm/', title: 'Der Sturm' },
     p09: {
-      el: document.getElementById('p-09'), url: '../09_dein_ort/',
+      el: document.getElementById('p-09'), url: '../09_dein_ort/', title: 'Dein Ort',
       subs: [
-        { m: 1, label: 'Wer ist wie du?' },
-        { m: 2, label: 'Butter oder Nutella?' },
-        { m: 3, label: 'Herzens-Orte' },
+        { m: 1, label: 'Wer ist wie du?', desc: 'Die Wahl-Heatmap' },
+        { m: 2, label: 'Butter oder Nutella?', desc: 'Du wirst Teil der Karte' },
+        { m: 3, label: 'Herzens-Orte', desc: 'Wohin dein Herz zieht' },
       ],
     },
-    w3: { el: document.getElementById('p-w3'), url: 'welt3/' },
+    w3: { el: document.getElementById('p-w3'), url: 'welt3/', title: '???' },
   };
+  const worldUrl = (P, map) => {
+    const p = new URLSearchParams({
+      embed: 1, name: visitor.name, age: visitor.age,
+      party: visitor.party, plz: (visitor.loc && visitor.loc.plz) || '10115',
+    });
+    if (map) p.set('map', map);
+    return P.url + '?' + p.toString();
+  };
+  const titleEl = document.getElementById('title');
+  const hintEl = document.getElementById('hint');
 
   const subEls = [];
   function subsOpen(key) {
     const P = PORTALS[key];
     if (!P.subs) return;
-    const c = centerOf(P.el);
-    const dirX = Math.sign(CENTER.x - c.x) || -1; // Unteroptionen Richtung Bildmitte
+    // Eigene Untermenü-Szene: drei große Kreise mittig in einer Reihe
+    const xs = [29, 50, 71];
     P.subs.forEach((s, i) => {
       const el = document.createElement('div');
       el.className = 'sub-circle';
-      el.textContent = s.label;
-      el.style.left = `calc(${c.x + dirX * 16}% - 5vw)`;
-      el.style.top = `calc(${c.y + (i - 1) * 20}% - 5vw)`;
-      el.addEventListener('click', ev => { ev.stopPropagation(); enter(key, s.m); });
+      el.innerHTML = `<h3>${s.label}</h3><p>${s.desc}</p>`;
+      el.style.left = xs[i] + '%';
+      el.style.top = '54%';
+      el.addEventListener('click', ev => { ev.stopPropagation(); enter(key, s.m, el); });
       body.appendChild(el);
       subEls.push(el);
       requestAnimationFrame(() => el.classList.add('open'));
@@ -115,40 +125,48 @@
     const P = PORTALS[key];
     setState('portal');
     for (const k of Object.keys(PORTALS)) PORTALS[k].el.classList.toggle('focus', k === key);
-    const c = centerOf(P.el);
-    // Partikel fliegt VOR das Portal (Richtung Bildmitte versetzt) — noch nicht hinein
-    const dx = CENTER.x - c.x, dy = CENTER.y - c.y;
-    const len = Math.hypot(dx, dy) || 1;
-    await flyTo(c.x + dx / len * 12, c.y + dy / len * 12, 36, 900);
-    if (P.subs) subsOpen(key);
-    document.getElementById('hint').textContent = P.subs
-      ? 'Wähle eine Karte — dein Partikel taucht dort ein'
-      : 'Klicke den Kreis erneut — dein Partikel taucht ein';
+    if (P.subs) {
+      // Untermenü: Portale weichen komplett, eigene Szene mit Titel
+      body.classList.add('submenu');
+      titleEl.textContent = P.title + ' · Wähle eine Karte';
+      hintEl.textContent = 'Klicke einen Kreis — dein Partikel taucht dort ein · Leere klicken = zurück';
+      await flyTo(50, 24, 40, 900); // Partikel schwebt über der Kreis-Reihe
+      subsOpen(key);
+    } else {
+      const c = centerOf(P.el);
+      const dx = CENTER.x - c.x, dy = CENTER.y - c.y;
+      const len = Math.hypot(dx, dy) || 1;
+      hintEl.textContent = 'Klicke den Kreis erneut — dein Partikel taucht ein';
+      await flyTo(c.x + dx / len * 12, c.y + dy / len * 12, 36, 900);
+    }
   }
 
   async function backToMenu() {
     subsClose();
     focusKey = null;
+    frame.src = 'about:blank'; // ggf. vorgeladene Welt verwerfen
     for (const k of Object.keys(PORTALS)) PORTALS[k].el.classList.remove('focus');
     setState('menu');
-    document.getElementById('hint').textContent = 'Klicke ein Portal — dein Partikel fliegt dorthin';
+    titleEl.textContent = 'Der Partikel-Hub · Wähle eine Welt';
+    hintEl.textContent = 'Klicke ein Portal — dein Partikel fliegt dorthin';
     await flyTo(CENTER.x, CENTER.y, 44, 900);
   }
 
-  async function enter(key, map) {
+  async function enter(key, map, viaEl) {
     const P = PORTALS[key];
+    const target = viaEl ? centerOf(viaEl) : centerOf(P.el);
     subsClose();
-    setState('enter'); // Portale blenden aus, Partikel bleibt sichtbar
-    const c = centerOf(P.el);
-    await flyTo(c.x, c.y, 16, 900); // Eintauchen in den Kreis
-    const p = new URLSearchParams({
-      embed: 1, name: visitor.name, age: visitor.age,
-      party: visitor.party, plz: (visitor.loc && visitor.loc.plz) || '10115',
-    });
-    if (map) p.set('map', map);
-    frame.src = P.url + '?' + p.toString();
-    await new Promise(res => { frame.onload = res; setTimeout(res, 6000); });
-    setState('world'); // iframe blendet ein, Partikel aus — die Welt übernimmt ihn
+    setState('enter'); // Portale/Untermenü blenden aus, Partikel bleibt sichtbar
+    // Welt parallel zum Flug laden — ihre Eintritts-Animation beginnt unten mittig,
+    // genau wo der Hub-Partikel gleich ankommt
+    frame.src = worldUrl(P, map);
+    const loaded = new Promise(res => { frame.onload = res; setTimeout(res, 6000); });
+    await flyTo(target.x, target.y, 16, 700);  // 1) Eintauchen in den Kreis
+    // 2) Nahtlose Übergabe: weiter zum Startpunkt der Welt-Animation (unten Mitte),
+    //    dort startet der Partikel von 08/09 — die Welt "übernimmt" ihn sichtbar
+    await flyTo(50, 72, 34, 1100);
+    await loaded;
+    setState('world'); // iframe blendet ein, Hub-Partikel blendet genau dort aus
   }
 
   async function leave() {
@@ -207,9 +225,18 @@
     showStep(2);
   }
   document.querySelector('[data-next="0"]').addEventListener('click', submitName);
-  oName.addEventListener('keydown', e => { if (e.key === 'Enter') submitName(); });
   document.querySelector('[data-next="1"]').addEventListener('click', submitAge);
-  oAge.addEventListener('keydown', e => { if (e.key === 'Enter') submitAge(); });
+  // Enter bestätigt IMMER den aktuellen Schritt — unabhängig davon, wo der Fokus liegt
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || hubState !== 'onboarding') return;
+    e.preventDefault();
+    if (step === 0) submitName();
+    else if (step === 1) submitAge();
+    else if (step === 3) {
+      const l = resolveLocation(oLoc.value);
+      if (l) finishOnboarding(l);
+    }
+  });
 
   {
     const row = document.getElementById('o-party');
@@ -245,11 +272,6 @@
       li.addEventListener('click', () => finishOnboarding(entryFor(h[2])));
       oAc.appendChild(li);
     }
-  });
-  oLoc.addEventListener('keydown', e => {
-    if (e.key !== 'Enter') return;
-    const l = resolveLocation(oLoc.value);
-    if (l) finishOnboarding(l);
   });
 
   // ---------- Idle-Reset (Hub-Ebene) ----------

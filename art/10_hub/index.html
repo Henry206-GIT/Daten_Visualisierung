@@ -66,14 +66,16 @@
   #onb-dots span.on { background:#fff; }
 
   /* ---- Menü: Kreis-Portale ---- */
-  .ring { position:fixed; z-index:15; width:15vw; max-width:230px; aspect-ratio:1;
+  .ring { position:fixed; z-index:15; width:min(16vw, 240px); min-width:170px; aspect-ratio:1;
     border:1px solid rgba(255,255,255,.5); border-radius:50%;
+    background:radial-gradient(circle at 50% 36%, rgba(255,255,255,.05), transparent 62%);
+    box-shadow:inset 0 0 60px rgba(255,255,255,.035);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    text-align:center; cursor:pointer; opacity:0; pointer-events:none;
-    transition:opacity .8s ease, box-shadow .3s ease, border-color .3s ease; }
+    text-align:center; cursor:pointer; opacity:0; pointer-events:none; user-select:none;
+    transition:opacity .8s ease, box-shadow .35s ease, border-color .35s ease; }
   body.menu .ring, body.portal .ring { opacity:1; pointer-events:auto; }
-  .ring:hover { border-color:#fff; box-shadow:0 0 40px 6px rgba(255,255,255,.18) inset,
-    0 0 30px 4px rgba(255,255,255,.15); }
+  .ring:hover { border-color:#fff; box-shadow:0 0 44px 6px rgba(255,255,255,.16) inset,
+    0 0 34px 5px rgba(255,255,255,.14); }
   .ring h2 { font-size:clamp(1rem,1.6vw,1.4rem); font-weight:normal; letter-spacing:.08em; }
   .ring p { font-size:clamp(.68rem,.95vw,.82rem); color:rgba(255,255,255,.5);
     letter-spacing:.1em; margin-top:.5em; padding:0 1.4em; }
@@ -83,15 +85,24 @@
   body.portal .ring:not(.focus) { opacity:.25; }
   .ring.focus { border-color:#fff; }
 
-  /* Unteroptionen (Karten von 09) fächern um das fokussierte Portal auf */
-  .sub-circle { position:fixed; z-index:16; width:10vw; max-width:150px; aspect-ratio:1;
+  /* Untermenü (Karten von 09): eigene, aufgeräumte Szene — Portale weichen,
+     die Optionen stehen als große Kreise mittig in einer Reihe */
+  body.submenu .ring { opacity:0 !important; pointer-events:none !important; }
+  .sub-circle { position:fixed; z-index:16; width:min(15vw, 220px); aspect-ratio:1;
     border:1px solid rgba(255,255,255,.55); border-radius:50%; background:rgba(0,0,0,.75);
-    display:flex; align-items:center; justify-content:center; text-align:center;
-    font-size:clamp(.72rem,1vw,.88rem); letter-spacing:.06em; padding:1em; cursor:pointer;
-    opacity:0; pointer-events:none; transform:scale(.6);
-    transition:opacity .45s ease, transform .45s ease, box-shadow .3s; }
-  body.portal .sub-circle.open { opacity:1; pointer-events:auto; transform:scale(1); }
-  .sub-circle:hover { border-color:#fff; box-shadow:0 0 30px 4px rgba(255,255,255,.18); }
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:1.2em; cursor:pointer; min-width:150px;
+    opacity:0; pointer-events:none; transform:translate(-50%,-50%) scale(.7);
+    transition:opacity .5s ease, transform .5s cubic-bezier(.2,.8,.3,1), box-shadow .3s,
+      border-color .3s; }
+  body.portal .sub-circle.open { opacity:1; pointer-events:auto;
+    transform:translate(-50%,-50%) scale(1); }
+  .sub-circle:hover { border-color:#fff; box-shadow:0 0 44px 6px rgba(255,255,255,.16) inset,
+    0 0 34px 5px rgba(255,255,255,.16); }
+  .sub-circle h3 { font-size:clamp(.9rem,1.3vw,1.15rem); font-weight:normal;
+    letter-spacing:.07em; }
+  .sub-circle p { font-size:clamp(.66rem,.9vw,.8rem); color:rgba(255,255,255,.5);
+    letter-spacing:.08em; margin-top:.5em; padding:0 .6em; }
 
   #hint { position:fixed; left:0; right:0; bottom:2.2vh; z-index:15; text-align:center;
     font-size:clamp(.75rem,1.1vw,.95rem); letter-spacing:.16em; text-transform:uppercase;
@@ -106,6 +117,15 @@
   #fade { position:fixed; inset:0; z-index:50; background:#000; opacity:0;
     pointer-events:none; transition:opacity 1.2s ease; }
   #fade.on { opacity:1; }
+
+  /* Qualitäts-Boden: sichtbarer Tastatur-Fokus, respektierte Motion-Präferenz */
+  button:focus-visible, input:focus-visible, .ring:focus-visible, .sub-circle:focus-visible {
+    outline:1px solid rgba(255,255,255,.75); outline-offset:4px; }
+  input { caret-color:#fff; }
+  @media (prefers-reduced-motion: reduce) {
+    #particle, #dot { animation:none; }
+    .ring, .sub-circle, #frame, .panel { transition-duration:.01s; }
+  }
 </style>
 </head>
 <body class="onboarding">
