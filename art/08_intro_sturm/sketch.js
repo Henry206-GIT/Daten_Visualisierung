@@ -56,16 +56,32 @@ function setup() {
 
   const q = new URLSearchParams(location.search);
   if (EMBED) {                                     // eingebettet im Partikel-Hub (Stück 10):
-    visitorName = (q.get('name') || '').trim().toUpperCase();
-    appState = 'flight'; flightStart = millis(); setBody('flight');
     document.getElementById('back').addEventListener('click', () =>
       parent.postMessage({ type: 'exit' }, '*'));
     let idleT;
     const armIdle = () => { clearTimeout(idleT);
-      idleT = setTimeout(() => parent.postMessage({ type: 'exit' }, '*'), 60000); };
+      idleT = setTimeout(() => {
+        if (appState !== 'intro') parent.postMessage({ type: 'exit' }, '*');
+      }, 60000); };
     for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'])
       addEventListener(ev, armIdle, { passive: true });
     armIdle();
+    const startEmbedFlight = name => {
+      visitorName = (name || '').trim().toUpperCase();
+      appState = 'flight'; flightStart = millis(); setBody('flight');
+      armIdle();
+    };
+    if (q.has('standby')) {
+      // Persistenter Hub-iframe: alles ist geladen, Welt wartet schwarz auf 'enter'
+      setBody('intro');
+      addEventListener('message', e => {
+        if (e.origin !== location.origin || !e.data) return;
+        if (e.data.type === 'enter') startEmbedFlight(e.data.name);
+        if (e.data.type === 'reset') resetToIntro();
+      });
+    } else {
+      startEmbedFlight(q.get('name'));
+    }
     parent.postMessage({ type: 'ready' }, '*');
   }
   else if (q.get('skipintro')) { startApp(); }     // direkt in die App (Dev/Screenshot)
@@ -80,6 +96,22 @@ function setup() {
 const EMBED = new URLSearchParams(location.search).has('embed');
 function setBody(cls) { document.body.className = cls + (EMBED ? ' embed' : ''); }
 
+// Zurück auf Anfangszustand wie nach frischem Laden — Regler-Werte bleiben erhalten
+function resetToIntro() {
+  flightFixed = null;
+  selLand = null; selParty = null;
+  document.getElementById('sel-land').value = '';
+  updatePartyOptions(null);
+  if (textMode) {
+    textMode = false;
+    const t = document.getElementById('toggle-text');
+    t.classList.remove('on'); t.textContent = 'Kürzel: aus';
+  }
+  document.getElementById('name-input').value = '';
+  rebuild(); // neutrale Sphäre
+  appState = 'intro'; setBody('intro');
+}
+
 function wireIntro() {
   const start = () => {
     if (appState !== 'intro') return;
@@ -90,21 +122,7 @@ function wireIntro() {
   document.getElementById('name-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') start();
   });
-  document.getElementById('replay').addEventListener('click', () => {
-    // Zurück auf Anfangszustand wie nach frischem Laden — Regler-Werte bleiben erhalten
-    flightFixed = null;
-    selLand = null; selParty = null;
-    document.getElementById('sel-land').value = '';
-    updatePartyOptions(null);
-    if (textMode) {
-      textMode = false;
-      const t = document.getElementById('toggle-text');
-      t.classList.remove('on'); t.textContent = 'Kürzel: aus';
-    }
-    document.getElementById('name-input').value = '';
-    rebuild(); // neutrale Sphäre
-    appState = 'intro'; setBody('intro');
-  });
+  document.getElementById('replay').addEventListener('click', resetToIntro);
 }
 
 function startApp() {

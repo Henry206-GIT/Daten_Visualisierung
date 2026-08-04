@@ -133,6 +133,7 @@
     cursor:pointer; }
   #back:hover { background:rgba(255,255,255,.14); }
   body.embed.explore #back { display:block; }
+  body.embed #survey { display:none !important; } /* Standby im Hub: dunkler Globus wartet */
   #view { top:2.4vh; right:1.6vw; width:min(280px, 26vw); }
   .panel h2 { font-size:.95rem; font-weight:normal; letter-spacing:.18em;
     text-transform:uppercase; color:rgba(255,255,255,.6); margin-bottom:.7em; }
@@ -296,6 +297,9 @@
   <h1>An welchem Ort hängt dein Herz?</h1>
   <input id="a3-in" type="text" placeholder="Ort oder PLZ" autocomplete="off" spellcheck="false">
   <ul id="a3-ac"></ul>
+  <div class="btn-row"><button id="a3-go">Bestätigen ▸</button></div>
+  <p id="a3-hint" style="margin-top:1em; font-size:.85rem; color:rgba(255,255,255,.45);
+    letter-spacing:.08em; min-height:1.2em;"></p>
   <button class="skip" id="a3-skip">lieber nicht sagen</button>
 </div>
 

@@ -37,8 +37,24 @@
   const body = document.body;
   const particle = document.getElementById('particle');
   const pname = document.getElementById('pname');
-  const frame = document.getElementById('frame');
   const setState = s => { hubState = s; body.className = s; };
+
+  // Persistente Welt-iframes: laden EINMAL beim Hub-Start (Standby),
+  // Eintritt/Verlassen sind danach nur noch postMessage + Opacity — kein Nachladen.
+  const frames = {
+    p08: document.getElementById('f-p08'),
+    p09: document.getElementById('f-p09'),
+    w3: document.getElementById('f-w3'),
+  };
+  frames.p08.src = '../08_intro_sturm/?embed=1&standby=1';
+  frames.p09.src = '../09_dein_ort/?embed=1&standby=1';
+  frames.w3.src = 'welt3/?standby=1';
+  let activeFrame = null;
+  // Jede Welt meldet 'ready', sobald sie initialisiert ist — erst dann darf 'enter' gesendet werden
+  const readyResolvers = {};
+  const readyPromises = {};
+  for (const k of Object.keys(frames))
+    readyPromises[k] = new Promise(r => { readyResolvers[k] = r; });
 
   const CENTER = { x: 50, y: 46 };
   // Flug per RAF: easeInOutCubic (sanft beschleunigen + abbremsen) und leichte
@@ -89,14 +105,6 @@
     },
     w3: { el: document.getElementById('p-w3'), url: 'welt3/', title: '???' },
   };
-  const worldUrl = (P, map) => {
-    const p = new URLSearchParams({
-      embed: 1, name: visitor.name, age: visitor.age,
-      party: visitor.party, plz: (visitor.loc && visitor.loc.plz) || '10115',
-    });
-    if (map) p.set('map', map);
-    return P.url + '?' + p.toString();
-  };
   const titleEl = document.getElementById('title');
   const hintEl = document.getElementById('hint');
 
@@ -144,7 +152,6 @@
   async function backToMenu() {
     subsClose();
     focusKey = null;
-    frame.src = 'about:blank'; // ggf. vorgeladene Welt verwerfen
     for (const k of Object.keys(PORTALS)) PORTALS[k].el.classList.remove('focus');
     setState('menu');
     titleEl.textContent = 'Der Partikel-Hub · Wähle eine Welt';
@@ -153,33 +160,45 @@
   }
 
   async function enter(key, map, viaEl) {
-    const P = PORTALS[key];
-    const target = viaEl ? centerOf(viaEl) : centerOf(P.el);
+    const target = viaEl ? centerOf(viaEl) : centerOf(PORTALS[key].el);
     subsClose();
     setState('enter'); // Portale/Untermenü blenden aus, Partikel bleibt sichtbar
-    // Welt parallel zum Flug laden — ihre Eintritts-Animation beginnt unten mittig,
-    // genau wo der Hub-Partikel gleich ankommt
-    frame.src = worldUrl(P, map);
-    const loaded = new Promise(res => { frame.onload = res; setTimeout(res, 6000); });
-    await flyTo(target.x, target.y, 16, 700);  // 1) Eintauchen in den Kreis
-    // 2) Nahtlose Übergabe: weiter zum Startpunkt der Welt-Animation (unten Mitte),
-    //    dort startet der Partikel von 08/09 — die Welt "übernimmt" ihn sichtbar
-    await flyTo(50, 72, 34, 1100);
-    await loaded;
+    await Promise.all([ // 1) Eintauchen in den Kreis, parallel auf die Welt warten
+      flyTo(target.x, target.y, 16, 700),
+      Promise.race([readyPromises[key], new Promise(r => setTimeout(r, 8000))]),
+    ]);
+    // 2) Welt starten (sie ist schon geladen) — ihre Eintritts-Animation beginnt
+    //    unten mittig, genau wo der Hub-Partikel gleich ankommt
+    activeFrame = frames[key];
+    activeFrame.contentWindow.postMessage({
+      type: 'enter', name: visitor.name, age: visitor.age,
+      party: visitor.party, plz: (visitor.loc && visitor.loc.plz) || '10115', map,
+    }, location.origin);
+    await flyTo(50, 72, 34, 1100); // nahtlose Übergabe an den Welt-Partikel
+    activeFrame.classList.add('active');
     setState('world'); // iframe blendet ein, Hub-Partikel blendet genau dort aus
   }
 
   async function leave() {
     setState('leave'); // iframe blendet aus, Partikel erscheint wieder
+    if (activeFrame) activeFrame.classList.remove('active');
     await flyTo(CENTER.x, CENTER.y, 44, 1100);
-    frame.src = 'about:blank';
+    if (activeFrame) {
+      activeFrame.contentWindow.postMessage({ type: 'reset' }, location.origin);
+      activeFrame = null;
+    }
     await backToMenu();
   }
 
   addEventListener('message', e => {
-    if (e.origin !== location.origin) return;
-    if (!e.data || hubState !== 'world') return;
-    if (e.data.type === 'exit') leave();
+    if (e.origin !== location.origin || !e.data) return;
+    if (e.data.type === 'ready')
+      for (const k of Object.keys(frames))
+        if (frames[k].contentWindow === e.source) readyResolvers[k]();
+    // exit zaehlt nur von der AKTIVEN Welt — Standby-Frames (z.B. deren Idle) duerfen
+    // die laufende Welt nicht beenden
+    if (e.data.type === 'exit' && hubState === 'world' &&
+        activeFrame && e.source === activeFrame.contentWindow) leave();
   });
 
   for (const k of Object.keys(PORTALS))
@@ -295,7 +314,9 @@
     fade.classList.add('on');
     setTimeout(() => {
       subsClose();
-      frame.src = 'about:blank';
+      if (activeFrame) { activeFrame.classList.remove('active'); activeFrame = null; }
+      for (const f of Object.values(frames)) // alle Welten zurück in den Standby
+        f.contentWindow.postMessage({ type: 'reset' }, location.origin);
       visitor.name = ''; visitor.age = null; visitor.party = null; visitor.loc = null;
       oName.value = ''; oAge.value = ''; oLoc.value = ''; oAc.innerHTML = '';
       pname.textContent = '';

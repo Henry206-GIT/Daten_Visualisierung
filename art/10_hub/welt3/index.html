@@ -36,13 +36,25 @@
 <script>
   const q = new URLSearchParams(location.search);
   document.getElementById('nm').textContent = (q.get('name') || '').trim().toUpperCase();
+  addEventListener('message', e => { // Standby im Hub: Name kommt per 'enter'-Nachricht
+    if (e.origin !== location.origin || !e.data) return;
+    if (e.data.type === 'enter')
+      document.getElementById('nm').textContent = (e.data.name || '').trim().toUpperCase();
+  });
   const exit = () => parent.postMessage({ type: 'exit' }, '*');
   document.getElementById('back').addEventListener('click', exit);
+  // Idle erst scharf, wenn die Welt wirklich betreten wurde (Standby darf nie exiten)
+  let entered = !q.has('standby');
   let t;
-  const arm = () => { clearTimeout(t); t = setTimeout(exit, 60000); };
+  const arm = () => { clearTimeout(t); t = setTimeout(() => { if (entered) exit(); }, 60000); };
   for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'])
     addEventListener(ev, arm, { passive: true });
   arm();
+  addEventListener('message', e => {
+    if (e.origin !== location.origin || !e.data) return;
+    if (e.data.type === 'enter') { entered = true; arm(); }
+    if (e.data.type === 'reset') entered = false;
+  });
   parent.postMessage({ type: 'ready' }, '*');
 </script>
 </body>

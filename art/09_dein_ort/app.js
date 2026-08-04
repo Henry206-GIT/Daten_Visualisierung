@@ -805,14 +805,18 @@
       a3ac.appendChild(li);
     }
   });
-  a3in.addEventListener('keydown', e => {
-    if (e.key !== 'Enter') return;
+  function submitHeart() {
     const l = resolveLocation(a3in.value);
-    if (l) answer3(l);
-  });
+    if (l) { document.getElementById('a3-hint').textContent = ''; answer3(l); }
+    else document.getElementById('a3-hint').textContent =
+      'Ort nicht gefunden — Ortsname oder 5-stellige PLZ eingeben.';
+  }
+  a3in.addEventListener('keydown', e => { if (e.key === 'Enter') submitHeart(); });
+  document.getElementById('a3-go').addEventListener('click', submitHeart);
   document.getElementById('a3-skip').addEventListener('click', () => askEl3.classList.remove('open'));
   document.getElementById('a3-change').addEventListener('click', () => {
     a3in.value = ''; a3ac.innerHTML = ''; askEl3.classList.add('open');
+    setTimeout(() => a3in.focus(), 60);
   });
 
   function applyArcs() { globe.arcsData(mapMode === 3 ? loadArr(K3_KEY) : []); }
@@ -824,7 +828,10 @@
       b.classList.toggle('on', +b.dataset.map === m);
     if (phase === 'explore') {
       if (m === 2 && !myAnswer2) askEl2.classList.add('open');
-      if (m === 3 && !myHeart) askEl3.classList.add('open');
+      if (m === 3 && !myHeart) {
+        askEl3.classList.add('open');
+        setTimeout(() => a3in.focus(), 60);
+      }
     }
     if (m !== 2) askEl2.classList.remove('open');
     if (m !== 3) askEl3.classList.remove('open');
@@ -1171,11 +1178,26 @@
   if (EMBED) {
     // Hub-Einstieg: Umfrage überspringen, Flug als Eintritts-Animation, Besucher zählt echt
     document.body.classList.add('embed');
-    answers.age = +(Q.get('age') || 34);
-    answers.party = Q.get('party') || 'Keine Angabe';
-    const plz = plzMap[Q.get('plz')] ? Q.get('plz') : '10115';
-    startFlight(entryFor(plz));
-    visitor.name = (Q.get('name') || '').trim().toUpperCase() || null;
+    const startEmbedFlight = d => {
+      answers.age = +(d.age || 34);
+      answers.party = d.party || 'Keine Angabe';
+      mapMode = Math.max(1, Math.min(3, +(d.map || 1)));
+      const plz = plzMap[d.plz] ? d.plz : '10115';
+      startFlight(entryFor(plz));
+      visitor.name = (d.name || '').trim().toUpperCase() || null;
+    };
+    if (Q.has('standby')) {
+      // Persistenter Hub-iframe: Globus dreht dunkel, Welt wartet auf 'enter'
+      setPhase('survey');
+      addEventListener('message', e => {
+        if (e.origin !== location.origin || !e.data) return;
+        if (e.data.type === 'enter' && phase === 'survey') startEmbedFlight(e.data);
+        if (e.data.type === 'reset' && phase !== 'survey') resetKiosk();
+      });
+    } else {
+      startEmbedFlight({ name: Q.get('name'), age: Q.get('age'), party: Q.get('party'),
+        plz: Q.get('plz'), map: Q.get('map') });
+    }
     parent.postMessage({ type: 'ready' }, '*');
   } else if (Q.has('fly')) {
     // ?fly=10115 [&age=&party=] → Umfrage überspringen, Flug direkt starten

@@ -12,10 +12,10 @@
   html, body { width:100%; height:100%; overflow:hidden; background:#000; }
   body { font-family:Georgia,'Times New Roman',serif; color:#fff; }
 
-  /* ---- Welt-iframe (unter allem) ---- */
-  #frame { position:fixed; inset:0; border:0; width:100%; height:100%; z-index:5;
+  /* ---- Welt-iframes: persistent + vorgeladen, Wechsel ist nur Opacity ---- */
+  .frame { position:fixed; inset:0; border:0; width:100%; height:100%; z-index:5;
     opacity:0; transition:opacity .9s ease; pointer-events:none; background:#000; }
-  body.world #frame { opacity:1; pointer-events:auto; }
+  body.world .frame.active { opacity:1; pointer-events:auto; }
 
   /* ---- Der Partikel (oberste Ebene, überlebt alles) ---- */
   #particle { position:fixed; z-index:40; width:44px; height:44px; border-radius:50%;
@@ -130,7 +130,9 @@
 </head>
 <body class="onboarding">
 
-<iframe id="frame" title="Welt"></iframe>
+<iframe class="frame" id="f-p08" title="Der Sturm"></iframe>
+<iframe class="frame" id="f-p09" title="Dein Ort"></iframe>
+<iframe class="frame" id="f-w3" title="Welt 3"></iframe>
 
 <div id="particle"><span id="pname"></span></div>
 
