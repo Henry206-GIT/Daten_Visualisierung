@@ -130,6 +130,16 @@
 
   <div id="cap"><div class="big"></div><div class="sub"></div></div>
   <button id="replay">↻ Intro neu</button>
+<button id="back">◂ Zurück zum Menü</button>
+<style>
+  #back { position:fixed; bottom:1.2rem; left:1.2rem; z-index:25; display:none;
+    background:rgba(10,11,16,.85); border:1px solid #2a2f40; color:#e9e6df;
+    font-family:Georgia,serif; font-size:.9rem; letter-spacing:.08em;
+    padding:.55em 1.3em; cursor:pointer; }
+  #back:hover { border-color:#454b60; }
+  body.embed #back { display:block; }
+  body.embed #replay { display:none; }
+</style>
 
   <!-- sketch.js immer frisch laden (Cache-Buster), p5 danach, damit setup() schon existiert -->
   <script>

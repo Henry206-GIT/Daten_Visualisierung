@@ -7,6 +7,7 @@
 
   // ---------- Parameter / Dev-Hooks ----------
   const Q = new URLSearchParams(location.search);
+  const EMBED = Q.has('embed'); // laeuft eingebettet im Partikel-Hub (Stueck 10)
   const FAST = Q.has('fast') ? 10 : 1;
   const IDLE_MS = (Q.has('idle') ? +Q.get('idle') : 60) * 1000;
   const FLY1 = 2800 / FAST;          // global → Deutschland-Rahmen
@@ -155,10 +156,23 @@
     .hexBinPointLat(p => p.lat)
     .hexBinPointLng(p => p.lng)
     .hexBinPointWeight(p => p.w)
+    // Bögen für Karte 3 (Wohnort -> Herzens-Ort)
+    .arcStartLat(d => d.fromLat).arcStartLng(d => d.fromLng)
+    .arcEndLat(d => d.toLat).arcEndLng(d => d.toLng)
+    .arcColor(() => '#ff7bb0')
+    .arcStroke(0.28)
+    .arcAltitudeAutoScale(0.4)
+    .arcsTransitionDuration(0)
     .htmlAltitude(0.012)
     .htmlElement(() => {
       const el = document.createElement('div');
       el.className = 'visitor-dot';
+      if (visitor && visitor.name) {
+        const n = document.createElement('span');
+        n.className = 'visitor-name';
+        n.textContent = visitor.name;
+        el.appendChild(n);
+      }
       return el;
     })
     .htmlElementVisibilityModifier((el, vis) => { el.style.opacity = vis ? 1 : 0; });
@@ -334,7 +348,8 @@
     return 'mittel';
   }
   function updateStage(force) {
-    const s = stageFor(globe.pointOfView().altitude);
+    let s = stageFor(globe.pointOfView().altitude);
+    if (mapMode !== 1 && s === 'fern') s = 'mittel'; // Choropleth gibt es nur für Karte 1
     if (!force && s === stage) return;
     stage = s;
     // fern: Kreis-Pfade ganz raus — als Linien ueber den farbigen Caps zerhacken sie
@@ -398,48 +413,97 @@
     return s;
   }
 
-  // Hex-Gitter über die Deutschland-BBox; Zellwert = gaußsche Kernel-Dichte der PLZ-Punkte.
-  // Zellen ohne PLZ in Reichweite (Meer/Ausland) entfallen — Inland bleibt lückenlos.
+  // Hex-Gitter über die Deutschland-BBox; Zellwert = gaußsche Kernel-Dichte je Kanal.
+  // Zellen außerhalb des Umrisses entfallen — Inland bleibt lückenlos (v=0 als Grundfüllung).
+  function latticeKDE(channels, sizeDeg) {
+    const sigma = Math.max(0.05, sizeDeg * heat.smooth);
+    const cut = sigma * 2.5, cut2 = cut * cut, inv2s2 = 1 / (2 * sigma * sigma);
+    const hashes = channels.map(pts => {
+      const h = new Map();
+      for (const p of pts) {
+        const k = Math.floor(p.lat / cut) + '|' + Math.floor((p.lng * LNG_COS) / cut);
+        (h.get(k) || h.set(k, []).get(k)).push(p);
+      }
+      return h;
+    });
+    const lngPitch = sizeDeg / LNG_COS, rowH = sizeDeg * 0.866;
+    const cells = []; let row = 0;
+    for (let lat = DE_BBOX.s; lat <= DE_BBOX.n; lat += rowH, row++) {
+      const off = (row % 2) ? lngPitch / 2 : 0;
+      for (let lng = DE_BBOX.w + off; lng <= DE_BBOX.e; lng += lngPitch) {
+        if (!maskInside(lat, lng)) continue;
+        const hy = Math.floor(lat / cut), hx = Math.floor((lng * LNG_COS) / cut);
+        const v = channels.map(() => 0);
+        for (let ci = 0; ci < hashes.length; ci++) {
+          const h = hashes[ci];
+          for (let iy = hy - 1; iy <= hy + 1; iy++)
+            for (let ix = hx - 1; ix <= hx + 1; ix++) {
+              const arr = h.get(iy + '|' + ix);
+              if (!arr) continue;
+              for (const p of arr) {
+                const dy = p.lat - lat, dx = (p.lng - lng) * LNG_COS;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < cut2) v[ci] += p.w * Math.exp(-d2 * inv2s2);
+              }
+            }
+        }
+        cells.push({ lat, lng, v, sizeDeg });
+      }
+    }
+    return cells;
+  }
+
+  // Karte 1: BTW-Daten (Wahlkreise × Alter × Partei)
   function binCells(sizeDeg) {
     const pts = buildHeatData();
     heatCap = calcCap(pts);
     for (const v of loadVisitors().map(visitorPoint).filter(matchesFilter))
       pts.push({ lat: v.lat, lng: v.lng, w: heatCap * 0.6 });
-
-    const sigma = Math.max(0.05, sizeDeg * heat.smooth);
-    const cut = sigma * 2.5, cut2 = cut * cut, inv2s2 = 1 / (2 * sigma * sigma);
-    const hash = new Map();
-    for (const p of pts) {
-      const k = Math.floor(p.lat / cut) + '|' + Math.floor((p.lng * LNG_COS) / cut);
-      (hash.get(k) || hash.set(k, []).get(k)).push(p);
-    }
-
-    const lngPitch = sizeDeg / LNG_COS, rowH = sizeDeg * 0.866;
-    const cells = []; let max = 0;
-    let row = 0;
-    for (let lat = DE_BBOX.s; lat <= DE_BBOX.n; lat += rowH, row++) {
-      const off = (row % 2) ? lngPitch / 2 : 0;
-      for (let lng = DE_BBOX.w + off; lng <= DE_BBOX.e; lng += lngPitch) {
-        if (!maskInside(lat, lng)) continue; // nur innerhalb des Deutschland-Umrisses
-        const hy = Math.floor(lat / cut), hx = Math.floor((lng * LNG_COS) / cut);
-        let v = 0;
-        for (let iy = hy - 1; iy <= hy + 1; iy++)
-          for (let ix = hx - 1; ix <= hx + 1; ix++) {
-            const arr = hash.get(iy + '|' + ix);
-            if (!arr) continue;
-            for (const p of arr) {
-              const dy = p.lat - lat, dx = (p.lng - lng) * LNG_COS;
-              const d2 = dx * dx + dy * dy;
-              if (d2 < cut2) v += p.w * Math.exp(-d2 * inv2s2);
-            }
-          }
-        // v==0 bleibt drin: Grundfüllung (kälteste Stufe), keine Löcher im Inland
-        cells.push({ lat, lng, v, sizeDeg }); if (v > max) max = v;
-      }
-    }
-    for (const c of cells) c.t = max ? Math.pow(Math.min(1, c.v / max), heat.contrast) : 0;
+    const cells = latticeKDE([pts], sizeDeg);
+    let max = 0;
+    for (const c of cells) if (c.v[0] > max) max = c.v[0];
+    for (const c of cells) c.t = max ? Math.pow(Math.min(1, c.v[0] / max), heat.contrast) : 0;
     return cells;
   }
+
+  // ---------- Karten 2 + 3: besucher-generierte Datensätze ----------
+  const K2_KEY = 'viz09_karte2_v1', K3_KEY = 'viz09_karte3_v1';
+  const loadArr = k => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } };
+  const saveArr = (k, a) => {
+    while (a.length > STORE_CAP) a.shift();
+    try { localStorage.setItem(k, JSON.stringify(a)); } catch (e) { /* voll */ }
+  };
+  let mapMode = Math.max(1, Math.min(3, +(Q.get('map') || 1)));
+  let myAnswer2 = null;  // Antwort dieses Besuchers (Butter/Nutella/Beides)
+  let myHeart = null;    // Herzens-Ort dieses Besuchers
+
+  // Karte 2: Butter (Kanal 0) vs. Nutella (Kanal 1) — Mehrheit faerbt die Zelle
+  function binCells2(sizeDeg) {
+    const arr = loadArr(K2_KEY);
+    const b = arr.filter(a => a.answer === 'Butter').map(a => ({ lat: a.lat, lng: a.lng, w: 1 }));
+    const n = arr.filter(a => a.answer === 'Nutella').map(a => ({ lat: a.lat, lng: a.lng, w: 1 }));
+    const cells = latticeKDE([b, n], sizeDeg);
+    let max = 0;
+    for (const c of cells) { c.tot = c.v[0] + c.v[1]; if (c.tot > max) max = c.tot; }
+    for (const c of cells) {
+      c.t = max ? Math.pow(Math.min(1, c.tot / max), heat.contrast) : 0;
+      c.mix = c.tot ? c.v[1] / c.tot : 0.5; // 0 = Butter, 1 = Nutella
+    }
+    return cells;
+  }
+
+  // Karte 3: Dichte der Herzens-Orte
+  function binCells3(sizeDeg) {
+    const pts = loadArr(K3_KEY).map(a => ({ lat: a.toLat, lng: a.toLng, w: 1 }));
+    const cells = latticeKDE([pts], sizeDeg);
+    let max = 0;
+    for (const c of cells) if (c.v[0] > max) max = c.v[0];
+    for (const c of cells) c.t = max ? Math.pow(Math.min(1, c.v[0] / max), heat.contrast) : 0;
+    return cells;
+  }
+
+  const cellsForMap = sizeDeg =>
+    mapMode === 2 ? binCells2(sizeDeg) : mapMode === 3 ? binCells3(sizeDeg) : binCells(sizeDeg);
 
   // Zellbasis (Position + Achsen) wird EINMAL beim Rebuild berechnet; das Layout schreibt
   // die Instanz-Matrizen danach direkt als Zahlen (kein Object3D pro Zelle) — Faktor ~10
@@ -495,7 +559,7 @@
   function rebuildHeat() {
     if (Q.has('noheat')) return; // Diagnose: Choropleth ohne Hex-Layer betrachten
     const sizeDeg = cellSizeDeg();
-    heatCells = binCells(sizeDeg);
+    heatCells = cellsForMap(sizeDeg);
     if (heatMesh) {
       globe.scene().remove(heatMesh);
       heatMesh.geometry.dispose();
@@ -532,15 +596,32 @@
       const arr = cellBuckets.get(bk);
       if (arr) arr.push(i); else cellBuckets.set(bk, [i]);
       const t = c.t;
-      const x = t * (HEAT_STOPS.length - 1);
-      const j = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
-      const f = x - j;
-      // Kälte-Regler: dimmt das kalte Ende Richtung Schwarz (cold=1 -> t=0 ist schwarz)
-      const dim = 1 - heat.cold * Math.pow(1 - t, 1.5);
-      col.setRGB(
-        (HEAT_STOPS[j][0] + (HEAT_STOPS[j + 1][0] - HEAT_STOPS[j][0]) * f) / 255 * dim,
-        (HEAT_STOPS[j][1] + (HEAT_STOPS[j + 1][1] - HEAT_STOPS[j][1]) * f) / 255 * dim,
-        (HEAT_STOPS[j][2] + (HEAT_STOPS[j + 1][2] - HEAT_STOPS[j][2]) * f) / 255 * dim);
+      if (mapMode === 2) {
+        // Butter #f2c14e ↔ Nutella #6b3f23; leere Zellen dunkel-neutral
+        if (!c.tot) col.setRGB(0.05, 0.055, 0.07);
+        else {
+          const m = c.mix, br = 0.35 + 0.65 * t;
+          col.setRGB(
+            (242 + (107 - 242) * m) / 255 * br,
+            (193 + (63 - 193) * m) / 255 * br,
+            (78 + (35 - 78) * m) / 255 * br);
+        }
+      } else if (mapMode === 3) {
+        // Herzens-Orte: dunkel → warmes Rosa
+        if (!c.v[0]) col.setRGB(0.05, 0.05, 0.065);
+        else col.setRGB(
+          (40 + 215 * t) / 255, (30 + 90 * t) / 255, (48 + 125 * t) / 255);
+      } else {
+        const x = t * (HEAT_STOPS.length - 1);
+        const j = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
+        const f = x - j;
+        // Kälte-Regler: dimmt das kalte Ende Richtung Schwarz (cold=1 -> t=0 ist schwarz)
+        const dim = 1 - heat.cold * Math.pow(1 - t, 1.5);
+        col.setRGB(
+          (HEAT_STOPS[j][0] + (HEAT_STOPS[j + 1][0] - HEAT_STOPS[j][0]) * f) / 255 * dim,
+          (HEAT_STOPS[j][1] + (HEAT_STOPS[j + 1][1] - HEAT_STOPS[j][1]) * f) / 255 * dim,
+          (HEAT_STOPS[j][2] + (HEAT_STOPS[j + 1][2] - HEAT_STOPS[j][2]) * f) / 255 * dim);
+      }
       heatMesh.setColorAt(i, col);
     }
     if (heatMesh.instanceColor) heatMesh.instanceColor.needsUpdate = true;
@@ -630,6 +711,136 @@
   bindSlider('s-contrast', v => { heat.contrast = v; rebuildHeat(); });
   bindSlider('s-cold', v => { heat.cold = v; rebuildHeat(); });
 
+  // ---------- Karten-Umschalter + Besucher-Fragen (Karten 2/3) ----------
+  const askEl2 = document.getElementById('ask2');
+  const askEl3 = document.getElementById('ask3');
+  let myK2Ts = null, myK3Ts = null; // eigene Einträge (für "Antwort ändern")
+
+  function updateCounters() {
+    const a2 = loadArr(K2_KEY);
+    const nb = a2.filter(a => a.answer === 'Butter').length;
+    const nn = a2.filter(a => a.answer === 'Nutella').length;
+    document.getElementById('a2-cnt').textContent = a2.length
+      ? `${a2.length} Antworten an dieser Station · ` +
+        `${Math.round(100 * nb / Math.max(1, nb + nn))} % Butter · ` +
+        `${Math.round(100 * nn / Math.max(1, nb + nn))} % Nutella`
+      : 'Noch keine Antworten an dieser Station.';
+    const a3 = loadArr(K3_KEY);
+    document.getElementById('a3-cnt').textContent = a3.length
+      ? `${a3.length} Herzens-Orte an dieser Station.`
+      : 'Noch keine Herzens-Orte an dieser Station.';
+    document.getElementById('a3-mine').textContent = myHeart
+      ? `Dein Herzens-Ort: ${myHeart.place}`
+      : 'Du hast noch keinen Herzens-Ort gewählt.';
+    for (const b of document.getElementById('a2-opts').children)
+      b.classList.toggle('on', myAnswer2 === b.dataset.a);
+  }
+
+  {
+    const box = document.getElementById('a2-opts');
+    for (const a of ['Butter', 'Nutella', 'Beides']) {
+      const b = document.createElement('button');
+      b.textContent = a; b.dataset.a = a;
+      b.addEventListener('click', () => answer2(a));
+      box.appendChild(b);
+    }
+  }
+
+  function answer2(a) {
+    if (!visitor) return;
+    const arr = loadArr(K2_KEY);
+    const ex = myK2Ts ? arr.find(e => e.ts === myK2Ts) : null;
+    if (ex) ex.answer = a;
+    else {
+      myK2Ts = Date.now();
+      arr.push({ answer: a, lat: visitor.lat, lng: visitor.lng, state: visitor.state, ts: myK2Ts });
+    }
+    saveArr(K2_KEY, arr);
+    myAnswer2 = a;
+    askEl2.classList.remove('open');
+    updateCounters();
+    rebuildHeat();
+    if (detailLand) renderDetail(detailLand);
+  }
+  askEl2.querySelectorAll('button').forEach(b =>
+    b.addEventListener('click', () => answer2(b.dataset.a)));
+
+  function answer3(loc) {
+    if (!visitor) return;
+    const arr = loadArr(K3_KEY);
+    const ex = myK3Ts ? arr.find(e => e.ts === myK3Ts) : null;
+    if (ex) Object.assign(ex, { toLat: loc.lat, toLng: loc.lng, place: loc.place, state: loc.state });
+    else {
+      myK3Ts = Date.now();
+      arr.push({ fromLat: visitor.lat, fromLng: visitor.lng, toLat: loc.lat, toLng: loc.lng,
+        place: loc.place, state: loc.state, ts: myK3Ts });
+    }
+    saveArr(K3_KEY, arr);
+    myHeart = loc;
+    askEl3.classList.remove('open');
+    applyArcs();
+    updateCounters();
+    rebuildHeat();
+    if (detailLand) renderDetail(detailLand);
+  }
+  const a3in = document.getElementById('a3-in');
+  const a3ac = document.getElementById('a3-ac');
+  a3in.addEventListener('input', () => {
+    const q = a3in.value.trim().toLowerCase();
+    a3ac.innerHTML = '';
+    if (q.length < 2) return;
+    const hits = [];
+    for (const p of placeIndex) {
+      if (p[0].startsWith(q)) { hits.push(p); if (hits.length >= 8) break; }
+    }
+    for (const h of hits) {
+      const li = document.createElement('li');
+      li.textContent = h[1];
+      li.addEventListener('click', () => {
+        const loc = h[2] ? entryFor(h[2])
+          : { lat: landGeom[h[3]].centroid.lat, lng: landGeom[h[3]].centroid.lng,
+              place: h[3], state: h[3], plz: null };
+        answer3(loc);
+      });
+      a3ac.appendChild(li);
+    }
+  });
+  a3in.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const l = resolveLocation(a3in.value);
+    if (l) answer3(l);
+  });
+  document.getElementById('a3-skip').addEventListener('click', () => askEl3.classList.remove('open'));
+  document.getElementById('a3-change').addEventListener('click', () => {
+    a3in.value = ''; a3ac.innerHTML = ''; askEl3.classList.add('open');
+  });
+
+  function applyArcs() { globe.arcsData(mapMode === 3 ? loadArr(K3_KEY) : []); }
+
+  function setMap(m) {
+    mapMode = m;
+    document.body.dataset.map = String(m);
+    for (const b of document.getElementById('maps').children)
+      b.classList.toggle('on', +b.dataset.map === m);
+    if (phase === 'explore') {
+      if (m === 2 && !myAnswer2) askEl2.classList.add('open');
+      if (m === 3 && !myHeart) askEl3.classList.add('open');
+    }
+    if (m !== 2) askEl2.classList.remove('open');
+    if (m !== 3) askEl3.classList.remove('open');
+    applyArcs();
+    updateCounters();
+    updateStage(true); // fern ggf. -> mittel
+    rebuildHeat();
+    if (detailLand) renderDetail(detailLand);
+  }
+  for (const b of document.getElementById('maps').children)
+    b.addEventListener('click', () => setMap(+b.dataset.map));
+  // Initial-Zustand des Umschalters (ohne Rebuild — Karte startet erst bei der Landung)
+  document.body.dataset.map = String(mapMode);
+  for (const b of document.getElementById('maps').children)
+    b.classList.toggle('on', +b.dataset.map === mapMode);
+
   function mkOpts(id, values, key) {
     const box = document.getElementById(id);
     box.innerHTML = '';
@@ -687,7 +898,7 @@
 
   function setPhase(p) {
     phase = p;
-    document.body.className = p;
+    document.body.className = p + (EMBED ? ' embed' : '');
     const c = globe.controls();
     if (p === 'explore') {
       c.enabled = true; c.autoRotate = false;
@@ -801,9 +1012,8 @@
     setFilterFromVisitor();
     heatVisible = true;
     lastCellSize = cellSizeDeg();
-    applyFilter();
     setPhase('explore');
-    updateStage(true); // Zoom-Stufe zur Landehoehe initialisieren
+    setMap(mapMode); // baut die Karte, initialisiert Zoom-Stufe, öffnet ggf. die Karten-Frage
     armIdle();
   }
 
@@ -844,18 +1054,39 @@
   function renderDetail(landName) {
     if (!landByName[landName]) return;
     detailLand = landName;
-    const a = aggregate(landName);
-    const all = heatPoints().filter(p => p.state === landName);
-    const match = all.filter(matchesFilter);
-    const wAll = all.reduce((s, p) => s + p.w, 0);
-    const wMatch = match.reduce((s, p) => s + p.w, 0);
-    const pct = wAll ? Math.round(100 * wMatch / wAll) : 0;
-    detailBody.innerHTML =
-      `<h3>${landName}</h3>` +
-      `<p class="big"><b>${pct}%</b> der Antworten hier passen zu deinem Filter<br>(${filterLabel()})</p>` +
-      a.rows.map(r => `<div class="row"><span>Top-Partei der ${r.label}-Jährigen</span><b>${r.top}</b></div>`).join('') +
-      `<div class="foot">${a.nVisitors} Besucher dieser Installation · Wahlsieger BTW 2025: ${a.btwWinner}` +
-      ` · Wahlbeteiligung ${landByName[landName].beteiligung.toFixed(1).replace('.', ',')} %</div>`;
+    let inner = `<h3>${landName}</h3>`;
+    if (mapMode === 2) {
+      const es = loadArr(K2_KEY).filter(e => e.state === landName);
+      const nb = es.filter(e => e.answer === 'Butter').length;
+      const nn = es.filter(e => e.answer === 'Nutella').length;
+      inner += es.length
+        ? `<p class="big"><b>${Math.round(100 * nb / Math.max(1, nb + nn))}%</b> Butter · ` +
+          `<b>${Math.round(100 * nn / Math.max(1, nb + nn))}%</b> Nutella</p>` +
+          `<div class="foot">${es.length} Antworten aus ${landName} an dieser Station</div>`
+        : `<p class="big">Noch keine Antworten aus ${landName}.</p>`;
+    } else if (mapMode === 3) {
+      const es = loadArr(K3_KEY).filter(e => e.state === landName);
+      const counts = {};
+      for (const e of es) counts[e.place] = (counts[e.place] || 0) + 1;
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      inner += top.length
+        ? top.map(([p, n]) => `<div class="row"><span>${p}</span><b>${n}×</b></div>`).join('') +
+          `<div class="foot">${es.length} Herzens-Orte liegen in ${landName}</div>`
+        : `<p class="big">Noch kein Herz hängt an einem Ort in ${landName}.</p>`;
+    } else {
+      const a = aggregate(landName);
+      const all = heatPoints().filter(p => p.state === landName);
+      const match = all.filter(matchesFilter);
+      const wAll = all.reduce((s, p) => s + p.w, 0);
+      const wMatch = match.reduce((s, p) => s + p.w, 0);
+      const pct = wAll ? Math.round(100 * wMatch / wAll) : 0;
+      inner +=
+        `<p class="big"><b>${pct}%</b> der Antworten hier passen zu deinem Filter<br>(${filterLabel()})</p>` +
+        a.rows.map(r => `<div class="row"><span>Top-Partei der ${r.label}-Jährigen</span><b>${r.top}</b></div>`).join('') +
+        `<div class="foot">${a.nVisitors} Besucher dieser Installation · Wahlsieger BTW 2025: ${a.btwWinner}` +
+        ` · Wahlbeteiligung ${landByName[landName].beteiligung.toFixed(1).replace('.', ',')} %</div>`;
+    }
+    detailBody.innerHTML = inner;
     detailEl.classList.add('open');
   }
   function closeDetail() {
@@ -883,8 +1114,10 @@
     idleTimer = setTimeout(onIdle, IDLE_MS);
   }
   function onIdle() {
-    if (phase === 'explore' || (phase === 'survey' && step > 0)) resetKiosk();
-    else armIdle();
+    if (phase === 'explore' || (phase === 'survey' && step > 0)) {
+      if (EMBED) parent.postMessage({ type: 'exit' }, '*'); // Hub übernimmt den Reset
+      else resetKiosk();
+    } else armIdle();
   }
   for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'])
     addEventListener(ev, armIdle, { passive: true });
@@ -910,6 +1143,13 @@
       setPhase('survey');
       stage = 'mittel';
       globe.polygonCapColor(f => capFn(f)); // Choropleth aus, Caps wieder schwarz
+      mapMode = 1;
+      myAnswer2 = null; myHeart = null; myK2Ts = null; myK3Ts = null;
+      askEl2.classList.remove('open'); askEl3.classList.remove('open');
+      globe.arcsData([]);
+      document.body.dataset.map = '1';
+      for (const b of document.getElementById('maps').children)
+        b.classList.toggle('on', b.dataset.map === '1');
       showStep(0);
       fadeEl.classList.remove('on');
     }, 1600);
@@ -924,7 +1164,20 @@
     const [la, ln, al] = Q.get('pov').split(',').map(Number);
     globe.pointOfView({ lat: la, lng: ln, altitude: al }, 0);
   }
-  if (Q.has('fly')) {
+  document.getElementById('back').addEventListener('click', () => {
+    if (EMBED) parent.postMessage({ type: 'exit' }, '*');
+  });
+
+  if (EMBED) {
+    // Hub-Einstieg: Umfrage überspringen, Flug als Eintritts-Animation, Besucher zählt echt
+    document.body.classList.add('embed');
+    answers.age = +(Q.get('age') || 34);
+    answers.party = Q.get('party') || 'Keine Angabe';
+    const plz = plzMap[Q.get('plz')] ? Q.get('plz') : '10115';
+    startFlight(entryFor(plz));
+    visitor.name = (Q.get('name') || '').trim().toUpperCase() || null;
+    parent.postMessage({ type: 'ready' }, '*');
+  } else if (Q.has('fly')) {
     // ?fly=10115 [&age=&party=] → Umfrage überspringen, Flug direkt starten
     answers.age = +(Q.get('age') || 34);
     answers.party = Q.get('party') || 'SPD';

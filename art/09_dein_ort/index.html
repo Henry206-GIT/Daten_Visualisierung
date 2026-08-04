@@ -62,14 +62,16 @@
     background:#fff; pointer-events:none; transform:translate(-50%,-50%);
     box-shadow:0 0 18px 6px rgba(255,255,255,.9), 0 0 60px 24px rgba(255,255,255,.35); }
 
-  /* ---- gelandeter Besucher-Punkt (htmlElementsLayer) ---- */
+  /* ---- gelandeter Besucher-Punkt (htmlElementsLayer) — pulsiert dauerhaft ---- */
   .visitor-dot { width:12px; height:12px; border-radius:50%; background:#fff;
     transform:translate(-50%,-50%); transition:opacity .4s;
-    box-shadow:0 0 10px 3px rgba(255,255,255,.95), 0 0 30px 10px rgba(255,255,255,.3);
-    animation:settle 2.4s ease-out; }
-  @keyframes settle {
-    0% { box-shadow:0 0 24px 10px rgba(255,255,255,1), 0 0 90px 40px rgba(255,255,255,.5); }
-    100% { box-shadow:0 0 10px 3px rgba(255,255,255,.95), 0 0 30px 10px rgba(255,255,255,.3); } }
+    animation:vpulse 2s ease-in-out infinite; }
+  @keyframes vpulse {
+    0%, 100% { box-shadow:0 0 10px 3px rgba(255,255,255,.95), 0 0 30px 10px rgba(255,255,255,.3); }
+    50% { box-shadow:0 0 22px 9px rgba(255,255,255,1), 0 0 70px 30px rgba(255,255,255,.45); } }
+  .visitor-name { position:absolute; left:50%; top:-1.9em; transform:translateX(-50%);
+    font-family:Georgia,serif; font-size:.78rem; letter-spacing:.14em; color:#fff;
+    text-shadow:0 0 8px rgba(255,255,255,.7); white-space:nowrap; }
 
   /* ---- Panels: Filter (links, groß) + Ansicht (oben rechts) ---- */
   .panel { position:fixed; z-index:16; background:rgba(0,0,0,.9);
@@ -77,6 +79,60 @@
     opacity:0; pointer-events:none; transition:opacity 1.2s ease; }
   body.explore .panel { opacity:1; pointer-events:auto; }
   #menu { top:2.4vh; left:1.6vw; width:min(380px, 36vw); }
+  /* Karten-abhängige Panels: nur das zur aktiven Karte gehörige links zeigen */
+  body[data-map="2"] #menu, body[data-map="3"] #menu,
+  body[data-map="1"] #panel2, body[data-map="3"] #panel2,
+  body[data-map="1"] #panel3, body[data-map="2"] #panel3 { opacity:0; pointer-events:none; }
+  #panel2, #panel3 { top:2.4vh; left:1.6vw; width:min(380px, 36vw); }
+  #panel2 .bar2 { height:8px; margin-top:.8em;
+    background:linear-gradient(90deg, #f2c14e, #6b3f23); border:1px solid rgba(255,255,255,.25); }
+  #panel2 .lbl, #panel3 .lbl { display:flex; justify-content:space-between; font-size:.62rem;
+    color:rgba(255,255,255,.45); letter-spacing:.1em; margin-top:.3em; }
+  .cnt { font-size:.78rem; color:rgba(255,255,255,.7); margin-top:.8em; line-height:1.6; }
+
+  /* ---- Karten-Umschalter (oben mittig) ---- */
+  #maps { position:fixed; top:2.4vh; left:50%; transform:translateX(-50%); z-index:16;
+    display:flex; gap:8px; opacity:0; pointer-events:none; transition:opacity 1.2s ease; }
+  body.explore #maps { opacity:1; pointer-events:auto; }
+  #maps button { background:rgba(0,0,0,.9); border:1px solid rgba(255,255,255,.4);
+    color:rgba(255,255,255,.75); font-family:inherit; font-size:.82rem; letter-spacing:.06em;
+    padding:.5em 1.1em; cursor:pointer; border-radius:2em; transition:all .25s; }
+  #maps button:hover { border-color:#fff; color:#fff; }
+  #maps button.on { background:#fff; color:#000; border-color:#fff; }
+
+  /* ---- Frage-Overlays der Karten 2/3 (Umfrage-Stil) ---- */
+  .ask { position:fixed; inset:0; z-index:22; display:none; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.35) 0%, rgba(0,0,0,.85) 100%); }
+  .ask.open { display:flex; animation:fadein .5s ease; }
+  .ask h1 { font-size:clamp(1.5rem, 3.2vw, 2.4rem); font-weight:normal;
+    letter-spacing:.04em; margin-bottom:.5em; }
+  .ask .sub { font-size:clamp(.8rem,1.2vw,1rem); color:rgba(255,255,255,.55);
+    letter-spacing:.14em; text-transform:uppercase; margin-bottom:2em; }
+  .ask .btn-row { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .ask .btn-row button { background:transparent; border:1px solid rgba(255,255,255,.45);
+    color:#fff; font-family:inherit; font-size:clamp(1rem,1.6vw,1.3rem); letter-spacing:.06em;
+    padding:.7em 1.6em; cursor:pointer; transition:background .25s; }
+  .ask .btn-row button:hover { background:rgba(255,255,255,.12); }
+  .ask input[type="text"] { background:transparent; border:none;
+    border-bottom:1px solid rgba(255,255,255,.6); color:#fff; font-family:inherit;
+    font-size:clamp(1.4rem,2.6vw,2rem); text-align:center; padding:.2em .4em;
+    width:min(420px,80vw); outline:none; }
+  .ask ul { list-style:none; margin-top:14px; min-height:1em; }
+  .ask ul li { padding:.35em .8em; cursor:pointer; font-size:clamp(.95rem,1.4vw,1.15rem);
+    color:rgba(255,255,255,.75); }
+  .ask ul li:hover { color:#fff; background:rgba(255,255,255,.1); }
+  .ask .skip { margin-top:2em; background:none; border:none; color:rgba(255,255,255,.4);
+    font-family:inherit; font-size:.8rem; letter-spacing:.1em; cursor:pointer; }
+  .ask .skip:hover { color:#fff; }
+
+  /* ---- Zurück-Knopf (nur im Embed-Modus des Hubs) ---- */
+  #back { position:fixed; bottom:2.4vh; left:1.6vw; z-index:18; display:none;
+    background:rgba(0,0,0,.85); border:1px solid rgba(255,255,255,.45); color:#fff;
+    font-family:inherit; font-size:.9rem; letter-spacing:.08em; padding:.55em 1.3em;
+    cursor:pointer; }
+  #back:hover { background:rgba(255,255,255,.14); }
+  body.embed.explore #back { display:block; }
   #view { top:2.4vh; right:1.6vw; width:min(280px, 26vw); }
   .panel h2 { font-size:.95rem; font-weight:normal; letter-spacing:.18em;
     text-transform:uppercase; color:rgba(255,255,255,.6); margin-bottom:.7em; }
@@ -144,7 +200,7 @@
   #fade.on { opacity:1; }
 </style>
 </head>
-<body class="survey">
+<body class="survey" data-map="1">
 
 <div id="globe"></div>
 
@@ -202,6 +258,48 @@
   <button id="detail-close">✕</button>
   <div id="detail-body"></div>
 </div>
+
+<div id="maps">
+  <button data-map="1">Wer ist wie du?</button>
+  <button data-map="2">Butter oder Nutella?</button>
+  <button data-map="3">Herzens-Orte</button>
+</div>
+
+<div id="panel2" class="panel">
+  <h2>Butter oder Nutella?</h2>
+  <div class="grp">Deine Antwort</div>
+  <div class="opts" id="a2-opts"></div>
+  <div class="bar2"></div>
+  <div class="lbl"><span>Butter</span><span>Nutella</span></div>
+  <p class="cnt" id="a2-cnt">Noch keine Antworten an dieser Station.</p>
+</div>
+
+<div id="panel3" class="panel">
+  <h2>Herzens-Orte</h2>
+  <p class="cnt" id="a3-mine">—</p>
+  <div class="opts"><button id="a3-change">Herzens-Ort ändern</button></div>
+  <p class="cnt" id="a3-cnt"></p>
+</div>
+
+<div id="ask2" class="ask">
+  <p class="sub">Du wirst Teil dieser Karte</p>
+  <h1>Was kommt bei dir zuerst aufs Brot?</h1>
+  <div class="btn-row">
+    <button data-a="Butter">Butter</button>
+    <button data-a="Nutella">Nutella</button>
+  </div>
+  <button class="skip" data-a="Beides">beides / weder noch</button>
+</div>
+
+<div id="ask3" class="ask">
+  <p class="sub">Du wirst Teil dieser Karte</p>
+  <h1>An welchem Ort hängt dein Herz?</h1>
+  <input id="a3-in" type="text" placeholder="Ort oder PLZ" autocomplete="off" spellcheck="false">
+  <ul id="a3-ac"></ul>
+  <button class="skip" id="a3-skip">lieber nicht sagen</button>
+</div>
+
+<button id="back">◂ Zurück zum Menü</button>
 
 <div id="hud">
   <p class="line">Scrollen = Zoom · Ziehen = Drehen · Mittlere Taste = Kippen · Region anklicken für Details</p>

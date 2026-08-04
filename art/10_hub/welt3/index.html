@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welt 3 — bald</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#000; }
+  body { font-family:Georgia,'Times New Roman',serif; color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; }
+  #dot { width:34px; height:34px; border-radius:50%; background:#fff; position:relative;
+    animation:pulse 2s ease-in-out infinite; margin-bottom:3rem; }
+  @keyframes pulse {
+    0%,100% { box-shadow:0 0 18px 6px rgba(255,255,255,.9), 0 0 60px 24px rgba(255,255,255,.3); }
+    50% { box-shadow:0 0 30px 12px rgba(255,255,255,1), 0 0 110px 45px rgba(255,255,255,.45); } }
+  #nm { position:absolute; left:50%; top:-2.2em; transform:translateX(-50%);
+    font-size:.85rem; letter-spacing:.16em; color:#fff; white-space:nowrap;
+    text-shadow:0 0 8px rgba(255,255,255,.7); }
+  h1 { font-size:clamp(1.6rem,3.4vw,2.6rem); font-weight:normal; letter-spacing:.05em;
+    margin-bottom:.6em; }
+  p { font-size:clamp(.85rem,1.3vw,1.05rem); color:rgba(255,255,255,.5);
+    letter-spacing:.14em; text-transform:uppercase; }
+  #back { position:fixed; bottom:2.4vh; left:1.6vw; background:rgba(0,0,0,.85);
+    border:1px solid rgba(255,255,255,.45); color:#fff; font-family:inherit;
+    font-size:.9rem; letter-spacing:.08em; padding:.55em 1.3em; cursor:pointer; }
+  #back:hover { background:rgba(255,255,255,.14); }
+</style>
+</head>
+<body>
+<div id="dot"><span id="nm"></span></div>
+<h1>Diese Welt entsteht noch</h1>
+<p>Dein Partikel wartet hier auf Neues</p>
+<button id="back">◂ Zurück zum Menü</button>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById('nm').textContent = (q.get('name') || '').trim().toUpperCase();
+  const exit = () => parent.postMessage({ type: 'exit' }, '*');
+  document.getElementById('back').addEventListener('click', exit);
+  let t;
+  const arm = () => { clearTimeout(t); t = setTimeout(exit, 60000); };
+  for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'])
+    addEventListener(ev, arm, { passive: true });
+  arm();
+  parent.postMessage({ type: 'ready' }, '*');
+</script>
+</body>
+</html>

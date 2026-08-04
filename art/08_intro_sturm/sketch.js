@@ -55,7 +55,20 @@ function setup() {
   rebuild();                              // baut neutrale Sphäre + seedet Partikel (Flug-Ziel)
 
   const q = new URLSearchParams(location.search);
-  if (q.get('skipintro')) { startApp(); }          // direkt in die App (Dev/Screenshot)
+  if (EMBED) {                                     // eingebettet im Partikel-Hub (Stück 10):
+    visitorName = (q.get('name') || '').trim().toUpperCase();
+    appState = 'flight'; flightStart = millis(); setBody('flight');
+    document.getElementById('back').addEventListener('click', () =>
+      parent.postMessage({ type: 'exit' }, '*'));
+    let idleT;
+    const armIdle = () => { clearTimeout(idleT);
+      idleT = setTimeout(() => parent.postMessage({ type: 'exit' }, '*'), 60000); };
+    for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'])
+      addEventListener(ev, armIdle, { passive: true });
+    armIdle();
+    parent.postMessage({ type: 'ready' }, '*');
+  }
+  else if (q.get('skipintro')) { startApp(); }     // direkt in die App (Dev/Screenshot)
   else if (q.get('flight') !== null) {             // eingefrorener Flug-Frame
     flightFixed = constrain(parseFloat(q.get('flight')), 0, 1);
     visitorName = q.get('name') || 'ANNA';
@@ -64,7 +77,8 @@ function setup() {
   background(7, 8, 12);
 }
 
-function setBody(cls) { document.body.className = cls; }
+const EMBED = new URLSearchParams(location.search).has('embed');
+function setBody(cls) { document.body.className = cls + (EMBED ? ' embed' : ''); }
 
 function wireIntro() {
   const start = () => {
