@@ -10,7 +10,7 @@ let DATA, FARBEN;
 let parts = [];                 // Pool
 let spheres = [];               // {party, votes, n, col, isCore}
 let selLand = null, selParty = null;
-let params = { ppp: 600, core: 1.0, orbit: 1.0, sphere: 1.0 };
+let params = { ppp: 600, core: 1.0, orbit: 1.0, sphere: 1.0, handR: 180, handF: 1.0 };
 let cap = {};
 let firstLayout = true;         // erster Aufbau: Positionen direkt setzen (sonst morphen)
 let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
@@ -52,6 +52,7 @@ function setup() {
   buildLandSelect();
   wireUI();
   wireIntro();
+  wireHand();
   rebuild();                              // baut neutrale Sphäre + seedet Partikel (Flug-Ziel)
 
   const q = new URLSearchParams(location.search);
@@ -66,6 +67,7 @@ function setup() {
     for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart'])
       addEventListener(ev, armIdle, { passive: true });
     armIdle();
+    handIdleReset = armIdle;                       // Handbewegung zaehlt auch als Aktivitaet
     const startEmbedFlight = name => {
       visitorName = (name || '').trim().toUpperCase();
       appState = 'flight'; flightStart = millis(); setBody('flight');
@@ -90,11 +92,59 @@ function setup() {
     visitorName = q.get('name') || 'ANNA';
     appState = 'flight'; setBody('flight');
   } else { setBody('intro'); }                     // Default: Intro
+  if (HAND_HOOK === '1') startHand();              // Test-Hook: Kamera sofort anfordern
   background(7, 8, 12);
 }
 
 const EMBED = new URLSearchParams(location.search).has('embed');
 function setBody(cls) { document.body.className = cls + (EMBED ? ' embed' : ''); }
+
+/* ---------- Hand-Tracking (hand.js liefert window.HANDS) ---------- */
+const HAND_HOOK = new URLSearchParams(location.search).get('hand');  // '0' = aus, '1' = sofort an
+let handOn = false;              // Kraftfeld aktiv (= Tracking laeuft)
+let handPaint = () => {};        // Knopf-Beschriftung auffrischen
+let handIdleReset = null;        // Embed: Idle-Timer bei Handaktivitaet zuruecksetzen
+
+function handReady() {
+  return HAND_HOOK !== '0' && !!window.Hand && Hand.available();
+}
+function startHand() {
+  if (!handReady() || Hand.isRunning() || Hand.isStarting()) return;
+  handPaint();                                    // sofort „…" zeigen, Permission laeuft
+  Hand.init().then(() => handPaint());
+}
+function wireHand() {
+  const btn = document.getElementById('toggle-hand');
+  if (!handReady()) return;                       // ohne Kamera bleibt der Knopf versteckt
+  btn.style.display = 'inline-block';             // CSS-Default ist display:none
+  handPaint = () => {
+    handOn = Hand.isRunning();
+    btn.classList.toggle('on', handOn);
+    btn.classList.toggle('busy', Hand.isStarting());
+    btn.textContent = Hand.isStarting() ? '✋ Hand: …' : (handOn ? '✋ Hand: an' : '✋ Hand: aus');
+  };
+  btn.addEventListener('click', () => {
+    if (Hand.isRunning()) { Hand.stop(); handPaint(); } else startHand();
+  });
+  handPaint();
+}
+
+// dezenter Glow-Ring an jeder Handposition (zeigt Reichweite des Kraftfelds)
+function drawHandGlow() {
+  blendMode(ADD); noFill();
+  for (const h of window.HANDS) {
+    if (!h.present) continue;
+    stroke(120, 190, 230, 24); strokeWeight(2); circle(h.x, h.y, params.handR * 2);
+    stroke(160, 215, 245, 52); strokeWeight(1); circle(h.x, h.y, params.handR * 0.45);
+  }
+  noStroke(); blendMode(BLEND);
+}
+
+// Handbewegung zaehlt als Aktivitaet — sonst resettet der Hub, waehrend jemand spielt
+function handKeepAlive() {
+  if (!handIdleReset || frameCount % 30) return;
+  if (Hand.anyPresent()) handIdleReset();
+}
 
 // Zurück auf Anfangszustand wie nach frischem Laden — Regler-Werte bleiben erhalten
 function resetToIntro() {
@@ -127,6 +177,7 @@ function wireIntro() {
 
 function startApp() {
   appState = 'app'; setBody('app');
+  startHand();                    // Kamera-Permission erst hier, nicht schon im Intro
 }
 
 /* ---------- Daten-Helfer ---------- */
@@ -210,6 +261,8 @@ function wireUI() {
   bind('s-core', 'core', v => v.toFixed(2) + '×', false);
   bind('s-orbit', 'orbit', v => v.toFixed(2) + '×', false);
   bind('s-sphere', 'sphere', v => v.toFixed(2) + '×', false);
+  bind('s-handr', 'handR', v => Math.round(v) + ' px', false);
+  bind('s-handf', 'handF', v => v.toFixed(2) + '×', false);
 }
 
 /* ---------- Allokation (3 Modi) ---------- */
@@ -297,6 +350,7 @@ function draw() {
   if (appState === 'flight') { drawFlight(); return; }
   clearBg(textMode ? 255 : 34);              // App
   renderPool(1);                             // identische Kamera
+  if (handOn) { drawHandGlow(); handKeepAlive(); }
 }
 
 function clearBg(a) { noStroke(); fill(7, 8, 12, a); rect(0, 0, width, height); }
@@ -399,6 +453,9 @@ function renderPool(gA, cam) {
   layout();
   const cx = width / 2, cy = height * (textMode ? 0.44 : 0.40);
   const c = cam || { z: 1, ax: cx, ay: cy, fx: cx, fy: cy };
+  // Hand-Kraftfeld nur im App-Zustand: dort ist die Kamera Identitaet -> Screen == Welt
+  const hands = (handOn && appState === 'app' && params.handF > 0) ? window.HANDS : null;
+  const hR = params.handR, hR2 = hR * hR;
   push();
   translate(c.ax, c.ay); scale(c.z); translate(-c.fx, -c.fy);
   blendMode(textMode ? BLEND : ADD);
@@ -418,6 +475,16 @@ function renderPool(gA, cam) {
     p.vx += (tx - p.x) * stiff; p.vy += (ty - p.y) * stiff;
     const nA = noise(p.x * 0.0013, p.y * 0.0013, frameCount * 0.003 + p.jitter) * TWO_PI * 2;
     p.vx += cos(nA) * nf; p.vy += sin(nA) * nf;
+    // Hand: radiale Abstossung (weicher Rand) + Mitreiss-Impuls in Wischrichtung.
+    // Wirkt NUR auf die Geschwindigkeit — Ziele (tx,ty) bleiben unangetastet.
+    if (hands) for (const h of hands) {
+      if (!h.present) continue;
+      const dx = p.x - h.x, dy = p.y - h.y, d2 = dx * dx + dy * dy;
+      if (d2 > hR2 || d2 < 0.01) continue;
+      const d = Math.sqrt(d2), f = 1 - d / hR, k = f * f * params.handF;
+      p.vx += (dx / d) * k * 7 + h.vx * k * 0.55;
+      p.vy += (dy / d) * k * 7 + h.vy * k * 0.55;
+    }
     p.vx *= 0.82; p.vy *= 0.82; p.x += p.vx; p.y += p.vy;
     p.col[0] += (p.tcol[0] - p.col[0]) * 0.07;
     p.col[1] += (p.tcol[1] - p.col[1]) * 0.07;
