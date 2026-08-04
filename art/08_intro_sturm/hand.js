@@ -16,6 +16,7 @@
   function mkSlot() { return { x: 0, y: 0, vx: 0, vy: 0, present: false, _seen: 0, _init: false }; }
 
   let video = null, stream = null, landmarker = null;
+  let lastErr = null;            // letzter Init-Fehler (Permission, kein Geraet, ...)
   let running = false, starting = false, lastTs = -1, lastVideoTime = -1;
   let delegate = null;           // 'GPU' | 'CPU' — welcher Pfad tatsaechlich laeuft
   let detN = 0, detT0 = 0;       // Erkennungen + Startzeit -> Rate (Hand.hz())
@@ -64,7 +65,8 @@
       requestAnimationFrame(tick);
       return true;
     } catch (e) {
-      console.info('[hand] Hand-Tracking aus:', e && e.message ? e.message : e);
+      lastErr = e && e.message ? e.message : String(e);
+      console.info('[hand] Hand-Tracking aus:', lastErr);
       stop(); starting = false;
       return false;
     }
@@ -143,6 +145,11 @@
     hz: () => detT0 ? detN / ((performance.now() - detT0) / 1000) : 0,   // Erkennungen/s
     // Kamera grundsätzlich vorhanden? (sagt nichts über die Permission)
     available: () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+    // Warum nicht verfügbar? (haeufigster Fall: HTTP ueber LAN-IP = unsicherer Kontext)
+    unavailableReason: () => window.isSecureContext
+      ? 'Dieser Browser hat keine Kamera-API.'
+      : 'Kamera-Zugriff braucht HTTPS oder localhost — diese Adresse ist unverschlüsselt (http://…).',
+    lastError: () => lastErr,
     anyPresent: () => slots.some(s => s.present),
   };
 })();

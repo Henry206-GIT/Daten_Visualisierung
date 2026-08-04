@@ -111,17 +111,33 @@ function handReady() {
 function startHand() {
   if (!handReady() || Hand.isRunning() || Hand.isStarting()) return;
   handPaint();                                    // sofort „…" zeigen, Permission laeuft
-  Hand.init().then(() => handPaint());
+  Hand.init().then(ok => {
+    handPaint();
+    if (!ok) {                                    // Grund sichtbar machen statt stumm scheitern
+      const btn = document.getElementById('toggle-hand');
+      btn.textContent = '✋ Hand: blockiert';
+      btn.title = 'Kamera-Start fehlgeschlagen: ' + (Hand.lastError() || 'unbekannt') +
+        ' — im Browser den Kamera-Zugriff erlauben und erneut klicken.';
+    }
+  });
 }
 function wireHand() {
   const btn = document.getElementById('toggle-hand');
-  if (!handReady()) return;                       // ohne Kamera bleibt der Knopf versteckt
+  if (HAND_HOOK === '0') return;                  // bewusst deaktiviert -> Knopf bleibt weg
   btn.style.display = 'inline-block';             // CSS-Default ist display:none
+  if (!window.Hand || !Hand.available()) {
+    // Nicht stumm verstecken: zeigen, WARUM es hier nicht geht (z.B. http://LAN-IP)
+    btn.disabled = true;
+    btn.textContent = '✋ Hand: nicht verfügbar';
+    btn.title = window.Hand ? Hand.unavailableReason() : 'hand.js wurde nicht geladen.';
+    return;
+  }
   handPaint = () => {
     handOn = Hand.isRunning();
     btn.classList.toggle('on', handOn);
     btn.classList.toggle('busy', Hand.isStarting());
     btn.textContent = Hand.isStarting() ? '✋ Hand: …' : (handOn ? '✋ Hand: an' : '✋ Hand: aus');
+    if (!Hand.isStarting()) btn.title = 'Hand vor die Webcam halten und durch den Sturm wischen';
   };
   btn.addEventListener('click', () => {
     if (Hand.isRunning()) { Hand.stop(); handPaint(); } else startHand();
