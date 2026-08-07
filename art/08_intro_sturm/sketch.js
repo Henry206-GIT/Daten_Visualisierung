@@ -10,7 +10,7 @@ let DATA, FARBEN;
 let parts = [];                 // Pool
 let spheres = [];               // {party, votes, n, col, isCore}
 let selLand = null, selParty = null;
-let params = { ppp: 600, core: 1.0, orbit: 1.0, sphere: 1.0, handR: 180, handF: 1.0 };
+let params = { ppp: 12000, core: 1.0, orbit: 1.0, sphere: 1.0, handR: 180, handF: 1.0 };
 let cap = {};
 let firstLayout = true;         // erster Aufbau: Positionen direkt setzen (sonst morphen)
 let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
