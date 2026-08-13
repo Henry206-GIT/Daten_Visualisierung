@@ -141,11 +141,17 @@
       await flyTo(50, 24, 40, 900); // Partikel schwebt über der Kreis-Reihe
       subsOpen(key);
     } else {
-      const c = centerOf(P.el);
-      const dx = CENTER.x - c.x, dy = CENTER.y - c.y;
+      // Anflugpunkt in PIXELN ab Ring-Rand — Prozentwerte wären auf X und Y
+      // verschieden lang, dann klebt der Orb am unteren Ring auf der Linie
+      const r = P.el.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const tx = innerWidth * CENTER.x / 100, ty = innerHeight * CENTER.y / 100;
+      let dx = tx - cx, dy = ty - cy;
       const len = Math.hypot(dx, dy) || 1;
+      dx /= len; dy /= len;
+      const gap = r.width / 2 + 48; // Ring-Radius + fester Abstand
       hintEl.textContent = 'Klicke den Kreis erneut — dein Partikel taucht ein';
-      await flyTo(c.x + dx / len * 12, c.y + dy / len * 12, 36, 900);
+      await flyTo((cx + dx * gap) / innerWidth * 100, (cy + dy * gap) / innerHeight * 100, 36, 900);
     }
   }
 
