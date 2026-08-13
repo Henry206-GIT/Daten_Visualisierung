@@ -87,7 +87,7 @@
 
   /* Untermenü (Karten von 09): eigene, aufgeräumte Szene — Portale weichen,
      die Optionen stehen als große Kreise mittig in einer Reihe */
-  body.submenu .ring { opacity:0 !important; pointer-events:none !important; }
+  body.submenu .ring, body.qr .ring { opacity:0 !important; pointer-events:none !important; }
   .sub-circle { position:fixed; z-index:16; width:min(15vw, 220px); aspect-ratio:1;
     border:1px solid rgba(255,255,255,.55); border-radius:50%; background:rgba(0,0,0,.75);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -114,6 +114,20 @@
     color:rgba(255,255,255,.4); opacity:0; transition:opacity .8s ease; pointer-events:none; }
   body.menu #title, body.portal #title { opacity:1; }
 
+  /* ---- QR-Szene (AR Anwendung): Orb parkt links, Code mittig ---- */
+  #qr { position:fixed; inset:0; z-index:17; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    opacity:0; pointer-events:none; transition:opacity .6s ease; }
+  body.qr #qr { opacity:1; pointer-events:auto; }
+  #qr .card { background:#fff; padding:2.2vmin; border-radius:1vmin;
+    box-shadow:0 0 60px 10px rgba(255,255,255,.12); }
+  #qr img { display:block; width:min(38vmin, 340px); height:auto;
+    image-rendering:pixelated; }
+  #qr h2 { font-size:clamp(1.2rem,2.2vw,1.8rem); font-weight:normal;
+    letter-spacing:.08em; margin-top:1.4em; }
+  #qr p { font-size:clamp(.8rem,1.2vw,1rem); color:rgba(255,255,255,.55);
+    letter-spacing:.14em; text-transform:uppercase; margin-top:.6em; }
+
   #fade { position:fixed; inset:0; z-index:50; background:#000; opacity:0;
     pointer-events:none; transition:opacity 1.2s ease; }
   #fade.on { opacity:1; }
@@ -132,7 +146,6 @@
 
 <iframe class="frame" id="f-p08" title="Der Sturm" allow="camera"></iframe>
 <iframe class="frame" id="f-p09" title="Dein Ort"></iframe>
-<iframe class="frame" id="f-w3" title="Welt 3"></iframe>
 
 <div id="particle"><span id="pname"></span></div>
 
@@ -174,8 +187,14 @@
   <p>Drei Karten über Deutschland — eine bist du</p>
 </div>
 <div class="ring" id="p-w3">
-  <h2>???</h2>
-  <p>Diese Welt entsteht noch</p>
+  <h2>AR Anwendung</h2>
+  <p>Mit dem Handy scannen</p>
+</div>
+
+<div id="qr">
+  <div class="card"><img src="qr-ar.png" alt="QR-Code zur AR-Anwendung"></div>
+  <h2>AR Anwendung</h2>
+  <p>Scanne den Code mit deiner Handy-Kamera</p>
 </div>
 
 <p id="hint">Klicke ein Portal — dein Partikel fliegt dorthin</p>

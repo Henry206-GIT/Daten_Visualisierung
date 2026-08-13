@@ -44,11 +44,9 @@
   const frames = {
     p08: document.getElementById('f-p08'),
     p09: document.getElementById('f-p09'),
-    w3: document.getElementById('f-w3'),
   };
   frames.p08.src = '../08_intro_sturm/?embed=1&standby=1';
   frames.p09.src = '../09_dein_ort/?embed=1&standby=1';
-  frames.w3.src = 'welt3/?standby=1';
   let activeFrame = null;
   // Jede Welt meldet 'ready', sobald sie initialisiert ist — erst dann darf 'enter' gesendet werden
   const readyResolvers = {};
@@ -103,7 +101,7 @@
         { m: 3, label: 'Herzens-Orte', desc: 'Wohin dein Herz zieht' },
       ],
     },
-    w3: { el: document.getElementById('p-w3'), url: 'welt3/', title: '???' },
+    w3: { el: document.getElementById('p-w3'), qr: true, title: 'AR Anwendung' },
   };
   const titleEl = document.getElementById('title');
   const hintEl = document.getElementById('hint');
@@ -140,6 +138,12 @@
       hintEl.textContent = 'Klicke einen Kreis — dein Partikel taucht dort ein · Leere klicken = zurück';
       await flyTo(50, 24, 40, 900); // Partikel schwebt über der Kreis-Reihe
       subsOpen(key);
+    } else if (P.qr) {
+      // QR-Szene: Orb parkt links auf der Seite, der Code erscheint mittig
+      body.classList.add('qr');
+      titleEl.textContent = P.title;
+      hintEl.textContent = 'Mit der Handy-Kamera scannen · Leere klicken = zurück';
+      await flyTo(16, 46, 40, 900);
     } else {
       // Anflugpunkt in PIXELN ab Ring-Rand — Prozentwerte wären auf X und Y
       // verschieden lang, dann klebt der Orb am unteren Ring auf der Linie
@@ -211,12 +215,13 @@
     PORTALS[k].el.addEventListener('click', ev => {
       ev.stopPropagation();
       if (hubState === 'menu') focusPortal(k);
-      else if (hubState === 'portal' && k === focusKey && !PORTALS[k].subs) enter(k, null);
+      else if (hubState === 'portal' && k === focusKey && !PORTALS[k].subs && !PORTALS[k].qr)
+        enter(k, null);
       else if (hubState === 'portal' && k !== focusKey) { subsClose(); focusPortal(k); }
     });
   document.addEventListener('click', e => {
     if (hubState !== 'portal') return;
-    if (e.target.closest('.ring, .sub-circle')) return;
+    if (e.target.closest('.ring, .sub-circle, #qr .card')) return;
     backToMenu(); // Klick ins Leere: eine Stufe zurück
   });
 
@@ -343,7 +348,7 @@
     pname.textContent = visitor.name;
     if (skip === '08') enter('p08', null);
     else if (skip === '09') enter('p09', +(Q.get('map') || 1));
-    else if (skip === '3') enter('w3', null);
+    else if (skip === '3') focusPortal('w3');
     else { setState('menu'); flyTo(CENTER.x, CENTER.y, 44, 600); }
   } else {
     showStep(0);
