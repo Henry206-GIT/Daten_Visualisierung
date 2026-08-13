@@ -106,6 +106,46 @@
   const titleEl = document.getElementById('title');
   const hintEl = document.getElementById('hint');
 
+  // Ring-Beschriftungen aus der Config setzen — wirkt auch bei gecachter index.html
+  const DESC = {
+    p08: 'Tauche in die Masse der 47 Millionen Stimmen',
+    p09: 'Drei Karten über Deutschland — eine bist du',
+    w3: 'Mit dem Handy scannen',
+  };
+  for (const k of Object.keys(PORTALS)) {
+    const h = PORTALS[k].el.querySelector('h2'), p = PORTALS[k].el.querySelector('p');
+    if (h) h.textContent = PORTALS[k].title;
+    if (p) p.textContent = DESC[k];
+  }
+
+  // QR-Szene dynamisch mit Inline-Styles erzeugen (kein CSS/HTML-Cache-Risiko),
+  // Hintergrund voll schwarz — deckt Menü/Ringe komplett ab
+  const qrEl = document.createElement('div');
+  qrEl.id = 'qr';
+  qrEl.style.cssText = 'position:fixed;inset:0;z-index:17;display:flex;flex-direction:column;' +
+    'align-items:center;justify-content:center;text-align:center;background:#000;' +
+    'opacity:0;pointer-events:none;transform:scale(.96);' +
+    'transition:opacity .9s ease, transform .9s cubic-bezier(.2,.7,.3,1);';
+  qrEl.innerHTML =
+    '<div class="card" style="background:#fff;padding:2.2vmin;border-radius:1vmin;' +
+      'box-shadow:0 0 60px 10px rgba(255,255,255,.12);">' +
+      '<img src="qr-ar.png" alt="QR-Code zur AR-Anwendung" ' +
+        'style="display:block;width:min(38vmin,340px);height:auto;image-rendering:pixelated;"></div>' +
+    '<h2 style="font-size:clamp(1.2rem,2.2vw,1.8rem);font-weight:normal;letter-spacing:.08em;' +
+      'margin-top:1.4em;">AR Anwendung</h2>' +
+    '<p style="font-size:clamp(.8rem,1.2vw,1rem);color:rgba(255,255,255,.55);' +
+      'letter-spacing:.14em;text-transform:uppercase;margin-top:.6em;">' +
+      'Scanne den Code mit deiner Handy-Kamera</p>' +
+    '<p style="position:absolute;left:0;right:0;bottom:2.2vh;font-size:clamp(.75rem,1.1vw,.95rem);' +
+      'letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.45);">' +
+      'Leere klicken = zurück</p>';
+  body.appendChild(qrEl);
+  const qrShow = on => {
+    qrEl.style.opacity = on ? '1' : '0';
+    qrEl.style.transform = on ? 'scale(1)' : 'scale(.96)';
+    qrEl.style.pointerEvents = on ? 'auto' : 'none';
+  };
+
   const subEls = [];
   function subsOpen(key) {
     const P = PORTALS[key];
@@ -139,10 +179,11 @@
       await flyTo(50, 24, 40, 900); // Partikel schwebt über der Kreis-Reihe
       subsOpen(key);
     } else if (P.qr) {
-      // QR-Szene: Orb parkt links auf der Seite, der Code erscheint mittig
+      // QR-Szene: Orb parkt links auf der Seite, der Code erscheint mittig auf Schwarz
       body.classList.add('qr');
       titleEl.textContent = P.title;
       hintEl.textContent = 'Mit der Handy-Kamera scannen · Leere klicken = zurück';
+      qrShow(true);
       await flyTo(16, 46, 40, 900);
     } else {
       // Anflugpunkt in PIXELN ab Ring-Rand — Prozentwerte wären auf X und Y
@@ -161,6 +202,7 @@
 
   async function backToMenu() {
     subsClose();
+    qrShow(false);
     focusKey = null;
     for (const k of Object.keys(PORTALS)) PORTALS[k].el.classList.remove('focus');
     setState('menu');
@@ -325,6 +367,7 @@
     fade.classList.add('on');
     setTimeout(() => {
       subsClose();
+      qrShow(false);
       if (activeFrame) { activeFrame.classList.remove('active'); activeFrame = null; }
       for (const f of Object.values(frames)) // alle Welten zurück in den Standby
         f.contentWindow.postMessage({ type: 'reset' }, location.origin);
