@@ -140,7 +140,10 @@ function wireHand() {
     btn.classList.toggle('on', handOn);
     btn.classList.toggle('busy', Hand.isStarting());
     btn.textContent = Hand.isStarting() ? '✋ Hand: …' : (handOn ? '✋ Hand: an' : '✋ Hand: aus');
-    if (!Hand.isStarting()) btn.title = 'Hand vor die Webcam halten und durch den Sturm wischen';
+    if (!Hand.isStarting()) btn.title = handOn
+      ? `Hand vor die Webcam halten und durch den Sturm wischen · Erkennung ${Hand.cost()} ms/Bild ` +
+        `(${Hand.delegate()}) · pausiert automatisch, solange du die Maus benutzt`
+      : 'Hand vor die Webcam halten und durch den Sturm wischen';
   };
   btn.addEventListener('click', () => {
     if (Hand.isRunning()) { Hand.stop(); handPaint(); } else startHand();

@@ -16,7 +16,12 @@
   function mkSlot() { return { x: 0, y: 0, vx: 0, vy: 0, present: false, _seen: 0, _init: false }; }
 
   const DETECT_HZ = 22;          // Zielrate der Erkennung (Rest der Zeit gehoert der UI)
-  let nextDetect = 0, detCost = 0;
+  const UI_PAUSE_MS = 700;       // solange nach einer Maus/Tasten-Aktion NICHT erkennen
+  let nextDetect = 0, detCost = 0, uiUntil = 0;
+  // Maus hat Vorrang: jede Erkennung blockiert den Main-Thread (GPU-Sync, oft >100 ms).
+  // Waehrend der Besucher klickt/zieht/tippt, pausiert das Tracking — danach laeuft es weiter.
+  for (const ev of ['pointerdown', 'pointermove', 'wheel', 'keydown'])
+    addEventListener(ev, () => { uiUntil = performance.now() + UI_PAUSE_MS; }, { passive: true, capture: true });
   let video = null, stream = null, landmarker = null;
   let lastErr = null;            // letzter Init-Fehler (Permission, kein Geraet, ...)
   let running = false, starting = false, lastTs = -1, lastVideoTime = -1;
@@ -92,6 +97,7 @@
     // Frame) blockiert das Klicks/Scrollen — die Seite fuehlt sich eingefroren an.
     // Zielrate DETECT_HZ, zusaetzlich adaptiv: teure Erkennungen vergroessern den Abstand.
     const nowMs = performance.now();
+    if (nowMs < uiUntil) return;                    // Maus/Tastatur aktiv -> UI hat Vorrang
     if (nowMs < nextDetect) return;
     nextDetect = nowMs + Math.max(1000 / DETECT_HZ, detCost * 1.6);
     lastVideoTime = video.currentTime;
@@ -153,6 +159,7 @@
     delegate: () => delegate,      // Konsole: Hand.delegate() -> 'GPU' oder 'CPU'
     hz: () => detT0 ? detN / ((performance.now() - detT0) / 1000) : 0,   // Erkennungen/s
     cost: () => +detCost.toFixed(1),   // ms pro Erkennung (Main-Thread-Blockade)
+    uiPaused: () => performance.now() < uiUntil,
     // Kamera grundsätzlich vorhanden? (sagt nichts über die Permission)
     available: () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
     // Warum nicht verfügbar? (haeufigster Fall: HTTP ueber LAN-IP = unsicherer Kontext)
