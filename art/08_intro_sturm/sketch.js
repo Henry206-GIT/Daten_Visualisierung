@@ -10,7 +10,7 @@ let DATA, FARBEN;
 let parts = [];                 // Pool
 let spheres = [];               // {party, votes, n, col, isCore}
 let selLand = null, selParty = null;
-let params = { ppp: 12000, core: 1.0, orbit: 1.0, sphere: 1.0, handR: 180, handF: 1.0 };
+let params = { ppp: 12000, core: 1.0, orbit: 1.0, sphere: 1.0, handR: 180, handF: 1.0, glow: 1.0 };
 let cap = {};
 let firstLayout = true;         // erster Aufbau: Positionen direkt setzen (sonst morphen)
 let textMode = false;           // Toggle: Partikel formen das Partei-Kürzel
@@ -288,6 +288,7 @@ function wireUI() {
   bind('s-sphere', 'sphere', v => v.toFixed(2) + '×', false);
   bind('s-handr', 'handR', v => Math.round(v) + ' px', false);
   bind('s-handf', 'handF', v => v.toFixed(2) + '×', false);
+  bind('s-glow', 'glow', v => v.toFixed(2) + '×', false);
 }
 
 /* ---------- Allokation (3 Modi) ---------- */
@@ -337,6 +338,7 @@ function rebuild() {
         col = s.mix[mi].col; mLeft--;
       }
       p.active = true; p.sIdx = si; p.isCore = s.isCore; p.b = b;
+      p.sharp = !!s.mix;                   // bunte Kugel -> schaerfere Partikel
       p.tcol = col; p.ang = random(TWO_PI); p.rad = sqrt(random());
       p.pIdx = c; p.sphN = s.n;   // Position + Größe der Sphäre (gleichmäßige Buchstaben-Verteilung)
     }
@@ -552,10 +554,10 @@ function renderPool(gA, cam) {
     const c = p.col, kk = p.sizeK, b = p.b;
     if (textMode) {
       const dr = constrain(s.R * 0.06, 1.6, 8);
-      fill(c[0], c[1], c[2], 120 * gA); circle(p.x, p.y, dr * 1.7);
-      fill(c[0], c[1], c[2], 255 * gA); circle(p.x, p.y, dr);
+      fill(c[0], c[1], c[2], min(255, 120 * gA * params.glow)); circle(p.x, p.y, dr * 1.7);
+      fill(c[0], c[1], c[2], min(255, 255 * gA * params.glow)); circle(p.x, p.y, dr);
     } else {
-      const sp = glowSprite(c, p.isCore);
+      const sp = glowSprite(c, p.isCore, p.sharp);
       const w = sp.S * kk;
       ctx2d.globalAlpha = Math.min(1, b * gA);
       ctx2d.drawImage(sp.img, p.x - w / 2, p.y - w / 2, w, w);
@@ -571,18 +573,26 @@ function renderPool(gA, cam) {
    vorgerendertes Sprite pro (Farbe, Kern?) via drawImage — Canvas2D blittet das auf
    der GPU, kein Pfad-Rasterizing. Farbe wird auf 24 Stufen/Kanal quantisiert. */
 const spriteCache = new Map();
-function glowSprite(c, isCore) {
+function glowSprite(c, isCore, sharp) {
   const q = 24;
-  const key = ((c[0] / 255 * q) | 0) + ',' + ((c[1] / 255 * q) | 0) + ',' + ((c[2] / 255 * q) | 0) + (isCore ? 'c' : 'n');
+  const gk = Math.round(params.glow * 20);   // Leuchtkraft in den Cache-Key
+  const key = ((c[0] / 255 * q) | 0) + ',' + ((c[1] / 255 * q) | 0) + ',' + ((c[2] / 255 * q) | 0) +
+    (isCore ? 'c' : 'n') + (sharp ? 's' : '') + gk;
   let sp = spriteCache.get(key);
   if (sp) return sp;
   const S = isCore ? 44 : 32; // Sprite-Kante (px) fuer sizeK=1, b=1
   const g = document.createElement('canvas'); g.width = g.height = S;
   const x = g.getContext('2d'); const m = S / 2;
-  const rr = isCore ? [17, 6.5, 2.6] : [12, 3.2, 0], aa = isCore ? [13, 48, 110] : [13, 48, 0];
+  const gl = params.glow;
+  // sharp = bunte Kugel: kleinerer Hof, hellerer Kern -> Farben bleiben getrennt
+  // (grosse weiche Hoefe ueberlagern sich sonst zu Farbrauschen = wirkt unscharf)
+  const rr = sharp ? (isCore ? [9, 4.2, 2.2] : [6.5, 2.6, 1.5])
+                   : (isCore ? [17, 6.5, 2.6] : [12, 3.2, 0]);
+  const aa = sharp ? (isCore ? [22, 90, 190] : [20, 95, 200])
+                   : (isCore ? [13, 48, 110] : [13, 48, 0]);
   for (let i = 0; i < 3; i++) {
     if (!rr[i]) continue;
-    x.fillStyle = `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${aa[i] / 255})`;
+    x.fillStyle = `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${Math.min(1, aa[i] / 255 * gl)})`;
     x.beginPath(); x.arc(m, m, rr[i] / 2, 0, Math.PI * 2); x.fill();
   }
   sp = { img: g, S };
