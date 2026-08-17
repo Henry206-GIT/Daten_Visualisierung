@@ -22,7 +22,7 @@
   const easeIO = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
   // ---------- Daten laden ----------
-  const [world, laenderGeo, data, plzMap, wkList, alterData, kreiseGeo] = await Promise.all([
+  const [world, laenderGeo, data, plzMap, wkList, alterData, kreiseGeo, seed23] = await Promise.all([
     fetch('world.geojson').then(r => r.json()),
     fetch('../geo_bundeslaender.json').then(r => r.json()),
     fetch('../data.json').then(r => r.json()),
@@ -30,6 +30,7 @@
     fetch('wk.json').then(r => r.json()), // 299 Wahlkreise: [lat, lng, {Partei: Zweitstimmen}, Land]
     fetch('alter.json').then(r => r.json()), // RWS: Land -> Altersgruppe -> {Partei: Zweitstimmen}
     fetch('kreise.geojson').then(r => r.json()), // 434 Kreise (isellsoap/deutschlandGeoJSON)
+    fetch('seed23.json').then(r => r.json()).catch(() => ({ k2: [], k3: [] })), // Fake-Grundlage Karten 2/3
   ]);
 
   const landByName = {};
@@ -468,8 +469,13 @@
 
   // ---------- Karten 2 + 3: besucher-generierte Datensätze ----------
   const K2_KEY = 'viz09_karte2_v1', K3_KEY = 'viz09_karte3_v1';
-  const loadArr = k => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } };
+  // Karten 2/3 starten nie leer: fiktiver Seed (seed23.json, seed:true) + echte Besucher
+  // aus localStorage. Gespeichert werden nur echte Eintraege.
+  const seedFor = k => k === K2_KEY ? seed23.k2 : k === K3_KEY ? seed23.k3 : [];
+  const loadReal = k => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } };
+  const loadArr = k => seedFor(k).concat(loadReal(k));
   const saveArr = (k, a) => {
+    a = a.filter(e => !e.seed);
     while (a.length > STORE_CAP) a.shift();
     try { localStorage.setItem(k, JSON.stringify(a)); } catch (e) { /* voll */ }
   };
@@ -720,15 +726,17 @@
     const a2 = loadArr(K2_KEY);
     const nb = a2.filter(a => a.answer === 'Butter').length;
     const nn = a2.filter(a => a.answer === 'Nutella').length;
+    const real2 = loadReal(K2_KEY).length;
     document.getElementById('a2-cnt').textContent = a2.length
-      ? `${a2.length} Antworten an dieser Station · ` +
+      ? `${a2.length} Antworten (${real2} an dieser Station) · ` +
         `${Math.round(100 * nb / Math.max(1, nb + nn))} % Butter · ` +
         `${Math.round(100 * nn / Math.max(1, nb + nn))} % Nutella`
-      : 'Noch keine Antworten an dieser Station.';
+      : 'Noch keine Antworten.';
     const a3 = loadArr(K3_KEY);
+    const real3 = loadReal(K3_KEY).length;
     document.getElementById('a3-cnt').textContent = a3.length
-      ? `${a3.length} Herzens-Orte an dieser Station.`
-      : 'Noch keine Herzens-Orte an dieser Station.';
+      ? `${a3.length} Herzens-Orte (${real3} an dieser Station).`
+      : 'Noch keine Herzens-Orte.';
     document.getElementById('a3-mine').textContent = myHeart
       ? `Dein Herzens-Ort: ${myHeart.place}`
       : 'Du hast noch keinen Herzens-Ort gewählt.';
