@@ -110,12 +110,12 @@
   // Polygons); Welt-Motiv, Label und QR liegen auf der Achse C->G in festen Anteilen.
   const GEO = {
     C: { x: 50, y: 46 },                 // Riss-Zentrum (Partikel-Ruheplatz)
-    top: { l: 42, r: 58 },               // Austritt der Risse am oberen Rand (%)
-    bot: { l: 20, r: 80 },               // Austritt am unteren Rand (%)
+    top: 50,                             // EIN Riss nach oben (Austritt am oberen Rand, %)
+    bot: { l: 20, r: 80 },               // zwei Risse nach unten (Austritt unterer Rand, %)
   };
   const polys = () => ({
-    p08: [[0, 0], [GEO.top.l, 0], [GEO.C.x, GEO.C.y], [GEO.bot.l, 100], [0, 100]],
-    p09: [[GEO.top.r, 0], [100, 0], [100, 100], [GEO.bot.r, 100], [GEO.C.x, GEO.C.y]],
+    p08: [[0, 0], [GEO.top, 0], [GEO.C.x, GEO.C.y], [GEO.bot.l, 100], [0, 100]],
+    p09: [[GEO.top, 0], [100, 0], [100, 100], [GEO.bot.r, 100], [GEO.C.x, GEO.C.y]],
     w3:  [[GEO.bot.l, 100], [GEO.C.x, GEO.C.y], [GEO.bot.r, 100]],
   });
   // Flaechen-Schwerpunkt eines Polygons (Prozent-Koordinaten, Aspekt-korrigiert)
@@ -148,7 +148,7 @@
   function crackSegments() {
     const C = GEO.C;
     return [
-      [[GEO.top.l, 0], [C.x, C.y]], [[GEO.top.r, 0], [C.x, C.y]],
+      [[GEO.top, 0], [C.x, C.y]],
       [[GEO.bot.l, 100], [C.x, C.y]], [[GEO.bot.r, 100], [C.x, C.y]],
     ];
   }
@@ -196,19 +196,19 @@
       const dx = G.x - GEO.C.x, dy = G.y - GEO.C.y;
       const lab = layoutEls.label[k];
       // Motiv sitzt bei (G.x, G.y-5); Label deutlich darunter, w3: ueber dem QR
-      if (k === 'w3') { lab.style.left = G.x + '%'; lab.style.top = (G.y - 9) + '%'; }
+      if (k === 'w3') { lab.style.left = G.x + '%'; lab.style.top = (G.y + 5) + '%'; }
       else { lab.style.left = G.x + '%'; lab.style.top = (G.y + 24) + '%'; }
       // Welt-Motiv auf den Schwerpunkt: die Welt selbst richtet ihren Blick dorthin
       // (Frame bleibt Vollbild, damit die Clip-Maske nichts abschneidet)
       if (frames[k]) shardFocus[k] = { x: G.x, y: G.y - 8 };
       if (k === 'p09') { // Globus-Frame: leicht vergroessert + verschoben, Motiv auf G
         const tx = (G.x - 50) / 100 * innerWidth, ty = (G.y - 8 - 50) / 100 * innerHeight;
-        p09Tf = `translate(${tx}px, ${ty}px) scale(1.25)`;
+        p09Tf = `translate(${tx}px, ${ty}px) scale(1.25)`; // Naehe kommt aus der Welt (POV)
         if (hubState === 'menu' || hubState === 'portal') frames.p09.style.transform = p09Tf;
       }
       if (k === 'w3') { // QR sitzt auf dem Schwerpunkt der unteren Scherbe
         const img = document.querySelector('#shard-w3 img');
-        img.style.left = G.x + '%'; img.style.top = (G.y + 7) + '%';
+        img.style.left = G.x + '%'; img.style.top = (G.y - 12) + '%';
       }
     }
     // Vignette folgt dem Riss-Zentrum

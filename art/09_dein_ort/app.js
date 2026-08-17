@@ -1248,7 +1248,7 @@
       const pv = country ? country.pov : { lat: 51.2, lng: 10.45 };
       // POV nach dem ersten Render setzen (setPhase/START_POV liefen davor)
       const previewPov = () => {
-        globe.pointOfView({ lat: pv.lat, lng: pv.lng, altitude: 1.0 }, 0);
+        globe.pointOfView({ lat: pv.lat, lng: pv.lng, altitude: 0.42 }, 0); // Deutschland nah
         globe.controls().autoRotateSpeed = 0.18;
         globe.controls().target.set(0, 0, 0);
       };
