@@ -8,21 +8,24 @@
   // ---------- Parameter / Dev-Hooks ----------
   const Q = new URLSearchParams(location.search);
   const EMBED = Q.has('embed'); // laeuft eingebettet im Partikel-Hub (Stueck 10)
+  // Laender-Variante: ?land=fr|it -> Heatmap ueber Frankreich/Italien (Einwohner-Dichte
+  // GeoNames statt Wahlkreis-Stimmen; Regionen statt Bundeslaender). Ohne Param: Deutschland.
+  const LAND = ['fr', 'it'].includes(Q.get('land')) ? Q.get('land') : null;
   const FAST = Q.has('fast') ? 10 : 1;
   const IDLE_MS = (Q.has('idle') ? +Q.get('idle') : 60) * 1000;
   const FLY1 = 2800 / FAST;          // global → Deutschland-Rahmen
   const FLY2 = 4000 / FAST;          // Abtauchen zum Ort
   const FLY_TOTAL = FLY1 + FLY2 + 300 / FAST;
-  const STORE_KEY = 'viz09_besucher_v1';
+  const STORE_KEY = 'viz09_besucher_v1' + (LAND ? '_' + LAND : '');
   const STORE_CAP = 5000;
   const SEED_DIVISOR = 40000;        // 1 Seed-Punkt je 40k Zweitstimmen (~1200 gesamt)
   const START_POV = { lat: 0, lng: 10, altitude: 2.6 }; // lat>0 verschiebt Globus im Headless nach unten
-  const GERMANY_POV = { lat: 51.2, lng: 10.45, altitude: 2.1 };
+  const GERMANY_POV = { lat: 51.2, lng: 10.45, altitude: 2.1 }; // wird im Laender-Modus ueberschrieben
 
   const easeIO = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
   // ---------- Daten laden ----------
-  const [world, laenderGeo, data, plzMap, wkList, alterData, kreiseGeo, seed23] = await Promise.all([
+  const [world, laenderGeo0, data, plzMap0, wkList, alterData, kreiseGeo, seed23, country] = await Promise.all([
     fetch('world.geojson').then(r => r.json()),
     fetch('../geo_bundeslaender.json').then(r => r.json()),
     fetch('../data.json').then(r => r.json()),
@@ -31,7 +34,15 @@
     fetch('alter.json').then(r => r.json()), // RWS: Land -> Altersgruppe -> {Partei: Zweitstimmen}
     fetch('kreise.geojson').then(r => r.json()), // 434 Kreise (isellsoap/deutschlandGeoJSON)
     fetch('seed23.json').then(r => r.json()).catch(() => ({ k2: [], k3: [] })), // Fake-Grundlage Karten 2/3
+    LAND ? fetch(`country_${LAND}.json`).then(r => r.json()) : Promise.resolve(null),
   ]);
+
+  // Im Laender-Modus: Regionen-Features + Staedte als "PLZ"-Ersatz (Key = Index)
+  const laenderGeo = country ? { features: country.features } : laenderGeo0;
+  const plzMap = country
+    ? Object.fromEntries(country.cities.map((c, i) => [String(i), [c[0], c[1], c[2], null, c[3]]]))
+    : plzMap0;
+  const ISO_SKIP = country ? { fr: 'FRA', it: 'ITA' }[LAND] : 'DEU';
 
   const landByName = {};
   for (const l of data.laender) landByName[l.name] = l;
@@ -63,13 +74,13 @@
     landGeom[f.properties.name] = { centroid: featureCentroid(f), bbox: featureBBox(f) };
   }
   const features = world.features
-    .filter(f => f.properties.ISO_A3 !== 'DEU')
+    .filter(f => f.properties.ISO_A3 !== ISO_SKIP)
     .concat(laenderGeo.features);
 
   // Kreis-Grenzen als Pfade (Linien) statt Polygone: 434 Kreise triangulieren ist zu
   // teuer, Linien sind billig. Punkte als [lat, lng, alt]-Tupel, markiert via .kreis.
   const kreisPaths = [];
-  for (const f of kreiseGeo.features)
+  for (const f of (country ? [] : kreiseGeo.features))
     for (const ring of featureRings(f)) {
       const p = ring.map(([lng, lat]) => [lat, lng, 0.0068]);
       p.kreis = true;
@@ -270,6 +281,19 @@
   });
   const plzCountByWk = new Array(wkList.length).fill(0);
   for (const i of plzWk) plzCountByWk[i]++;
+  // Laender-Modus: jeder Stadt ihre Region (naechster Zentroid) als state eintragen
+  if (country) {
+    const regs = Object.entries(landGeom);
+    for (const e of plzList) {
+      let best = null, bd = Infinity;
+      for (const [name, g] of regs) {
+        const dy = g.centroid.lat - e[0], dx = (g.centroid.lng - e[1]) * COSD;
+        const d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = name; }
+      }
+      e[3] = best;
+    }
+  }
 
   // Anteil der Altersgruppe an den Wählern einer Partei im Land (aus alter.json, RWS).
   // So verschiebt der Alters-Filter die Karte real: Parteien haben je Region
@@ -293,6 +317,10 @@
   }
 
   function buildHeatData() {
+    if (country) {
+      // Einwohner-Dichte (GeoNames cities5000) — Filter Alter/Partei greifen hier nicht
+      return plzList.map(e => ({ lat: e[0], lng: e[1], w: e[4] || 1 }));
+    }
     const fac = ageFactorFn();
     const pts = [];
     for (let i = 0; i < plzList.length; i++) {
@@ -350,7 +378,7 @@
   }
   function updateStage(force) {
     let s = stageFor(globe.pointOfView().altitude);
-    if (mapMode !== 1 && s === 'fern') s = 'mittel'; // Choropleth gibt es nur für Karte 1
+    if ((mapMode !== 1 || country) && s === 'fern') s = 'mittel'; // Choropleth nur DE-Karte 1
     if (!force && s === stage) return;
     stage = s;
     // fern: Kreis-Pfade ganz raus — als Linien ueber den farbigen Caps zerhacken sie
@@ -367,7 +395,7 @@
   // Hex-Gitter über ganz Deutschland; Wert je Zelle = Kernel-Dichte aller PLZ-Punkte
   // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
   const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35, cold: 1 };
-  const DE_BBOX = { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
+  const DE_BBOX = country ? country.bbox : { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
   const CELL_CAP = 150000;
 
   // Deutschland-Maske: Länder-Polygone einmal in ein Canvas rastern -> O(1)-Inside-Test.
@@ -468,10 +496,10 @@
   }
 
   // ---------- Karten 2 + 3: besucher-generierte Datensätze ----------
-  const K2_KEY = 'viz09_karte2_v1', K3_KEY = 'viz09_karte3_v1';
+  const K2_KEY = 'viz09_karte2_v1' + (LAND ? '_' + LAND : ''), K3_KEY = 'viz09_karte3_v1' + (LAND ? '_' + LAND : '');
   // Karten 2/3 starten nie leer: fiktiver Seed (seed23.json, seed:true) + echte Besucher
   // aus localStorage. Gespeichert werden nur echte Eintraege.
-  const seedFor = k => k === K2_KEY ? seed23.k2 : k === K3_KEY ? seed23.k3 : [];
+  const seedFor = k => country ? [] : (k === K2_KEY ? seed23.k2 : k === K3_KEY ? seed23.k3 : []);
   const loadReal = k => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } };
   const loadArr = k => seedFor(k).concat(loadReal(k));
   const saveArr = (k, a) => {
@@ -884,7 +912,7 @@
   // ---------- Orts-Auflösung (PLZ / Ortsname / Bundesland) ----------
   const placeIndex = []; // [lowerName, anzeige, plzKey|null, landName|null]
   for (const [plz, e] of Object.entries(plzMap))
-    placeIndex.push([e[2].toLowerCase(), `${e[2]} (${plz})`, plz, null]);
+    placeIndex.push([e[2].toLowerCase(), country ? e[2] : `${e[2]} (${plz})`, plz, null]);
   for (const name of Object.keys(landGeom))
     placeIndex.push([name.toLowerCase(), name, null, name]);
 
@@ -894,7 +922,7 @@
   }
   function resolveLocation(q) {
     q = (q || '').trim();
-    if (/^\d{5}$/.test(q) && plzMap[q]) return entryFor(q);
+    if (!country && /^\d{5}$/.test(q) && plzMap[q]) return entryFor(q);
     const lower = q.toLowerCase();
     if (lower.length < 2) return null;
     const hit = placeIndex.find(p => p[0] === lower) || placeIndex.find(p => p[0].startsWith(lower));
@@ -998,7 +1026,7 @@
     setPhase('flight');
     acList.innerHTML = '';
     flightT0 = performance.now();
-    globe.pointOfView(GERMANY_POV, FLY1);
+    globe.pointOfView(country ? { lat: country.pov.lat, lng: country.pov.lng, altitude: 2.1 } : GERMANY_POV, FLY1);
     setTimeout(() => globe.pointOfView(
       { lat: visitor.lat, lng: visitor.lng, altitude: 0.30 }, FLY2), FLY1 + 100 / FAST);
     setTimeout(() => land(!Q.has('fly')), FLY_TOTAL); // Dev-Flug nicht persistieren
@@ -1170,6 +1198,25 @@
     }, 1600);
   }
 
+  // ---------- Laender-Modus: Texte ----------
+  if (country) {
+    const q3 = document.querySelector('#survey section[data-step="2"] h1');
+    if (q3) q3.textContent = `Wo in ${country.name} bist du zuhause?`;
+    const li = document.getElementById('in-loc'); if (li) li.placeholder = 'Ort';
+    const m2 = document.querySelector('#menu h2'); if (m2) m2.textContent = country.name + ' · Bevölkerung';
+    const cap = document.querySelector('#legend .cap');
+    if (cap) cap.textContent = 'Heiß = viele Menschen leben hier (Einwohner-Dichte). Heiße Regionen liegen höher.';
+    const src = document.querySelector('#hud .src');
+    if (src) src.textContent = `Besucherdaten dieser Installation · Grundglühen: Einwohner ${country.name} (GeoNames, CC-BY)`;
+    // Filter greifen hier nicht -> Filter-Gruppen ausblenden
+    for (const id of ['f-age', 'f-party'])
+      { const el = document.getElementById(id); if (el) { el.style.display = 'none';
+        const g = el.previousElementSibling; if (g && g.classList.contains('grp')) g.style.display = 'none'; } }
+    const maps = document.getElementById('maps'); // Karten 2/3 bleiben (Besucher-Daten je Land)
+    if (maps) maps.querySelector('[data-map="1"]').textContent = 'Wo leben die Menschen?';
+    document.title = `09 · ${country.name} — Heatmap`;
+  }
+
   // ---------- Dev-Hooks ----------
   if (Q.has('dbg')) setInterval(() => {
     document.title = [stage, phase, heatMesh && heatMesh.visible,
@@ -1214,8 +1261,8 @@
     const plz = plzMap[Q.get('fly')] ? Q.get('fly') : '10115';
     startFlight(entryFor(plz));
   } else if (Q.has('skipintro')) {
-    const plz = Q.get('plz') || '10115';
-    const loc = plzMap[plz] ? entryFor(plz) : entryFor('10115');
+    const plz = Q.get('plz') || (country ? '0' : '10115');
+    const loc = plzMap[plz] ? entryFor(plz) : entryFor(country ? '0' : '10115');
     visitor = Object.assign(
       { age: +(Q.get('age') || 34), party: Q.get('party') || 'SPD', ts: Date.now() }, loc);
     if (!Q.has('pov')) globe.pointOfView({ lat: visitor.lat, lng: visitor.lng, altitude: 0.8 }, 0);
