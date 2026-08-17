@@ -22,28 +22,38 @@
      Der Riss geht von der Mitte (50%,46%) sternförmig nach aussen: links = Sturm,
      rechts = Karte, unten = AR. Die Standby-iframes werden per clip-path zu Scherben. */
   body.menu .frame, body.portal .frame { opacity:1; }
-  body.menu #f-p08, body.portal #f-p08 { filter:brightness(.85);
-    clip-path:polygon(0 0, 44% 0, 50% 46%, 22% 100%, 0 100%); }
-  body.menu #f-p09, body.portal #f-p09 { filter:brightness(1.05) contrast(1.05);
-    clip-path:polygon(56% 0, 100% 0, 100% 100%, 78% 100%, 50% 46%); }
-  #shard-w3 { position:fixed; inset:0; z-index:5; pointer-events:none; opacity:0;
+  /* Geometrie (clip-path, Frame-Transform, Positionen) setzt hub.js aus EINER
+     Layout-Quelle: jede Scherbe hat einen Schwerpunkt, das Welt-Motiv wird per
+     transform dorthin geschoben, Labels/QR sitzen auf derselben Achse. */
+  body.menu #f-p08, body.portal #f-p08 { filter:brightness(.85); }
+  body.menu #f-p09, body.portal #f-p09 { filter:brightness(1.05) contrast(1.05); }
+  .frame { transform-origin:50% 50%; transition:opacity .9s ease,
+    clip-path .9s cubic-bezier(.2,.7,.3,1), filter .9s ease, transform .9s cubic-bezier(.2,.7,.3,1); }
+  body.world .frame.active { transform:none !important; }
+  /* Globus-Frame: Clip auf dem Wrapper (Transform des iframes darf die Maske nicht mitnehmen) */
+  #wrap-p09 { position:fixed; inset:0; z-index:5; pointer-events:none;
+    transition:clip-path .9s cubic-bezier(.2,.7,.3,1); }
+  #wrap-p09 > .frame { position:absolute; }
+  body.world #wrap-p09 { clip-path:none !important; pointer-events:auto; }
+  #shard-w3 { position:fixed; inset:0; z-index:6; pointer-events:none; opacity:0;
     transition:opacity .9s ease; background:
-      radial-gradient(ellipse at 50% 100%, rgba(255,255,255,.07), transparent 60%), #000;
-    clip-path:polygon(22% 100%, 50% 46%, 78% 100%); }
+      radial-gradient(ellipse at 50% 100%, rgba(255,255,255,.07), rgba(0,0,0,0) 60%), #05060a; }
   body.menu #shard-w3, body.portal #shard-w3 { opacity:1; }
-  #shard-w3 img { position:absolute; left:50%; bottom:5vh; transform:translateX(-50%);
-    width:min(14vmin,140px); opacity:.55; image-rendering:pixelated;
-    filter:invert(1); }
+  #shard-w3 img { position:absolute; transform:translate(-50%,-50%);
+    width:min(15vmin,150px); opacity:.6; image-rendering:pixelated; filter:invert(1); }
   /* Fokus: nicht gewählte Scherben dunkeln ab, gewählte kommt hoch */
   body.portal .frame:not(.focus), body.portal #shard-w3:not(.focus) { filter:brightness(.3) !important; }
   body.portal .frame.focus { filter:brightness(1.05) !important; }
   /* Riss-Linien: leuchtende Kanten entlang der Schnitte */
-  #cracks { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0;
+  #cracks { position:fixed; inset:0; z-index:4; pointer-events:none; opacity:0;
     transition:opacity .9s ease; }
   body.menu #cracks, body.portal #cracks { opacity:1; }
-  #cracks line { stroke:#fff; stroke-width:1.2; opacity:.85;
-    filter:drop-shadow(0 0 6px rgba(255,255,255,.9)) drop-shadow(0 0 18px rgba(255,255,255,.35)); }
-  #cracks .soft { stroke-width:6; opacity:.08; filter:blur(4px); }
+  /* Riss-Kanten: jede Scherbe hat darunter einen weissen, um wenige px groesseren
+     Klon (gleiches Polygon, per JS leicht aufgeblasen). Sichtbar bleibt nur der Saum
+     entlang der echten Scherbenkante -> Deckung per Konstruktion. */
+  #cracks .edge { position:fixed; inset:0; background:#fff; opacity:.9;
+    filter:blur(.6px) drop-shadow(0 0 6px rgba(255,255,255,.8)); }
+  #cracks::after { content:''; position:fixed; inset:0; background:#000; opacity:0; }
   /* Ueber den Scherben ein leichter Vignette-Schleier, damit Text lesbar bleibt */
   #veil { position:fixed; inset:0; z-index:9; pointer-events:none; opacity:0;
     transition:opacity .9s ease;
@@ -109,17 +119,12 @@
     text-shadow:0 0 18px rgba(0,0,0,.9), 0 2px 8px #000; }
   .ring p { font-size:clamp(.72rem,1vw,.9rem); color:rgba(255,255,255,.7); letter-spacing:.12em;
     margin-top:.5em; text-transform:uppercase; text-shadow:0 0 12px #000, 0 1px 6px #000; }
-  #p-08 { left:16vw; top:50%; --tf:translateY(-50%); transform:translateY(-50%); }
-  #p-09 { right:16vw; top:50%; --tf:translateY(-50%); transform:translateY(-50%); }
-  #p-w3 { left:50%; bottom:22vh; --tf:translateX(-50%); transform:translateX(-50%); }
+  .ring { --tf:translate(-50%,-50%); transform:translate(-50%,-50%); }
   body.portal .ring:not(.focus) { opacity:.25; }
   .ring.focus h2 { text-shadow:0 0 22px rgba(255,255,255,.7), 0 0 18px #000; }
   /* Klick-Zonen: die drei Scherben als unsichtbare Polygone */
   .zone { position:fixed; inset:0; z-index:14; cursor:pointer; opacity:0; pointer-events:none; }
   body.menu .zone, body.portal .zone { pointer-events:auto; }
-  #z-p08 { clip-path:polygon(0 0, 44% 0, 50% 46%, 22% 100%, 0 100%); }
-  #z-p09 { clip-path:polygon(56% 0, 100% 0, 100% 100%, 78% 100%, 50% 46%); }
-  #z-w3  { clip-path:polygon(22% 100%, 50% 46%, 78% 100%); }
   body.submenu .zone, body.qr .zone { pointer-events:none !important; }
 
   /* Untermenü (Karten von 09): eigene, aufgeräumte Szene — Portale weichen,
@@ -168,16 +173,9 @@
 <body class="onboarding">
 
 <iframe class="frame" id="f-p08" title="Der Sturm" allow="camera"></iframe>
-<iframe class="frame" id="f-p09" title="Dein Ort"></iframe>
+<div id="wrap-p09"><iframe class="frame" id="f-p09" title="Dein Ort"></iframe></div>
 <div id="shard-w3"><img src="qr-ar.png" alt=""></div>
-<svg id="cracks" viewBox="0 0 100 100" preserveAspectRatio="none">
-  <line class="soft" x1="44" y1="0" x2="50" y2="46"/><line class="soft" x1="56" y1="0" x2="50" y2="46"/>
-  <line class="soft" x1="22" y1="100" x2="50" y2="46"/><line class="soft" x1="78" y1="100" x2="50" y2="46"/>
-  <line x1="44" y1="0" x2="50" y2="46" vector-effect="non-scaling-stroke"/>
-  <line x1="56" y1="0" x2="50" y2="46" vector-effect="non-scaling-stroke"/>
-  <line x1="22" y1="100" x2="50" y2="46" vector-effect="non-scaling-stroke"/>
-  <line x1="78" y1="100" x2="50" y2="46" vector-effect="non-scaling-stroke"/>
-</svg>
+<div id="cracks"><div class="edge" data-k="p08"></div><div class="edge" data-k="p09"></div><div class="edge" data-k="w3"></div></div>
 <div id="veil"></div>
 <div class="zone" id="z-p08"></div><div class="zone" id="z-p09"></div><div class="zone" id="z-w3"></div>
 

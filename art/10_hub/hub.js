@@ -37,7 +37,12 @@
   const body = document.body;
   const particle = document.getElementById('particle');
   const pname = document.getElementById('pname');
-  const setState = s => { hubState = s; body.className = s; };
+  const setState = s => {
+    hubState = s; body.className = s;
+    // Globus-Vorschau-Transform nur im Menue/Portal, beim Eintauchen Vollbild
+    if (frames.p09) frames.p09.style.transform = (s === 'menu' || s === 'portal') ? p09Tf : '';
+
+  };
 
   // Persistente Welt-iframes: laden EINMAL beim Hub-Start (Standby),
   // Eintritt/Verlassen sind danach nur noch postMessage + Opacity — kein Nachladen.
@@ -105,6 +110,111 @@
   };
   const titleEl = document.getElementById('title');
   const hintEl = document.getElementById('hint');
+
+  // ---------- Layout-Geometrie: EINE Quelle fuer Risse, Scherben, Motive, Labels ----------
+  // Riss-Zentrum C; drei Risse gehen von C zum Rand (oben-links, oben-rechts, unten-links,
+  // unten-rechts). Jede Scherbe hat einen Schwerpunkt G (Flaechen-Schwerpunkt ihres
+  // Polygons); Welt-Motiv, Label und QR liegen auf der Achse C->G in festen Anteilen.
+  const GEO = {
+    C: { x: 50, y: 46 },                 // Riss-Zentrum (Partikel-Ruheplatz)
+    top: { l: 42, r: 58 },               // Austritt der Risse am oberen Rand (%)
+    bot: { l: 20, r: 80 },               // Austritt am unteren Rand (%)
+  };
+  const polys = () => ({
+    p08: [[0, 0], [GEO.top.l, 0], [GEO.C.x, GEO.C.y], [GEO.bot.l, 100], [0, 100]],
+    p09: [[GEO.top.r, 0], [100, 0], [100, 100], [GEO.bot.r, 100], [GEO.C.x, GEO.C.y]],
+    w3:  [[GEO.bot.l, 100], [GEO.C.x, GEO.C.y], [GEO.bot.r, 100]],
+  });
+  // Flaechen-Schwerpunkt eines Polygons (Prozent-Koordinaten, Aspekt-korrigiert)
+  function centroid(P) {
+    const W = innerWidth, H = innerHeight;
+    const pts = P.map(([x, y]) => [x / 100 * W, y / 100 * H]);
+    let a = 0, cx = 0, cy = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length];
+      const f = x0 * y1 - x1 * y0; a += f; cx += (x0 + x1) * f; cy += (y0 + y1) * f;
+    }
+    a *= 0.5; return { x: cx / (6 * a) / W * 100, y: cy / (6 * a) / H * 100 };
+  }
+  const polyCSS = P => 'polygon(' + P.map(([x, y]) => `${x}% ${y}%`).join(', ') + ')';
+  // Wo liegt das Motiv im Vollbild der Welt (Prozent)? 08: Sphaere mittig, etwas oben;
+  // 09-Standby: Globus-Zentrum mittig. Wird per translate auf den Scherben-Schwerpunkt geschoben.
+  const shardFocus = {}; // k -> {x,y} in % — wohin die Welt ihr Motiv legen soll
+  let p09Tf = '';        // CSS-Transform des Globus-Frames in der Vorschau
+  function sendShardFocus() {
+    for (const k of Object.keys(shardFocus))
+      if (frames[k]) frames[k].contentWindow.postMessage({ type: 'preview', ...shardFocus[k] }, location.origin);
+  }
+  const layoutEls = {
+    label: { p08: document.getElementById('p-08'), p09: document.getElementById('p-09'), w3: document.getElementById('p-w3') },
+    zone: { p08: document.getElementById('z-p08'), p09: document.getElementById('z-p09'), w3: document.getElementById('z-w3') },
+  };
+  const edgeEls = { p08: null, p09: null, w3: null };
+  for (const el of document.querySelectorAll('#cracks .edge')) edgeEls[el.dataset.k] = el;
+  // Polygon um d Pixel vom Schwerpunkt weg aufblasen (in Pixel-Raum, dann zurueck in %)
+  function inflate(P, G, dpx) {
+    return P.map(([x, y]) => {
+      const px = x / 100 * innerWidth, py = y / 100 * innerHeight;
+      const gx = G.x / 100 * innerWidth, gy = G.y / 100 * innerHeight;
+      let vx = px - gx, vy = py - gy; const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l;
+      return [(px + vx * dpx) / innerWidth * 100, (py + vy * dpx) / innerHeight * 100];
+    });
+  }
+  let edgeJitter = 0; // Vibration: der Saum atmet minimal (0..1)
+  function layoutEdges() {
+    const P = polys();
+    for (const k of Object.keys(P)) {
+      const G = centroid(P[k]);
+      const d = 1.6 + edgeJitter * 1.1;
+      if (edgeEls[k]) edgeEls[k].style.clipPath = polyCSS(inflate(P[k], G, d));
+    }
+  }
+  // Riss-Vibration: der leuchtende Saum flackert/atmet subtil (Space-Magic)
+  (function vibrate(now) {
+    requestAnimationFrame(vibrate);
+    if (!(hubState === 'menu' || hubState === 'portal')) return;
+    const t = now / 1000;
+    edgeJitter = 0.5 + 0.5 * Math.sin(t * 6.3) * Math.sin(t * 2.1) + 0.25 * Math.sin(t * 17);
+    edgeJitter = Math.max(0, Math.min(1, edgeJitter));
+    for (const el of Object.values(edgeEls))
+      if (el) el.style.opacity = (0.75 + 0.25 * Math.sin(t * 9.7 + 1)).toFixed(3);
+    layoutEdges();
+  })(0);
+  function applyLayout() {
+    const P = polys();
+    for (const k of Object.keys(P)) {
+      const css = polyCSS(P[k]);
+      const shard = k === 'w3' ? document.getElementById('shard-w3')
+        : k === 'p09' ? document.getElementById('wrap-p09') : frames[k];
+      if (shard) shard.style.clipPath = css;
+      if (layoutEls.zone[k]) layoutEls.zone[k].style.clipPath = css;
+      const G = centroid(P[k]);
+      // Label: auf der Achse C->G, leicht ueber G hinaus (weg vom Riss), fuer w3 unter G
+      const dx = G.x - GEO.C.x, dy = G.y - GEO.C.y;
+      const lab = layoutEls.label[k];
+      // Motiv sitzt bei (G.x, G.y-5); Label deutlich darunter, w3: ueber dem QR
+      if (k === 'w3') { lab.style.left = G.x + '%'; lab.style.top = (G.y - 9) + '%'; }
+      else { lab.style.left = G.x + '%'; lab.style.top = (G.y + 24) + '%'; }
+      // Welt-Motiv auf den Schwerpunkt: die Welt selbst richtet ihren Blick dorthin
+      // (Frame bleibt Vollbild, damit die Clip-Maske nichts abschneidet)
+      if (frames[k]) shardFocus[k] = { x: G.x, y: G.y - 8 };
+      if (k === 'p09') { // Globus-Frame: leicht vergroessert + verschoben, Motiv auf G
+        const tx = (G.x - 50) / 100 * innerWidth, ty = (G.y - 8 - 50) / 100 * innerHeight;
+        p09Tf = `translate(${tx}px, ${ty}px) scale(1.25)`;
+        if (hubState === 'menu' || hubState === 'portal') frames.p09.style.transform = p09Tf;
+      }
+      if (k === 'w3') { // QR sitzt auf dem Schwerpunkt der unteren Scherbe
+        const img = document.querySelector('#shard-w3 img');
+        img.style.left = G.x + '%'; img.style.top = (G.y + 7) + '%';
+      }
+    }
+    // Vignette folgt dem Riss-Zentrum
+    document.getElementById('veil').style.background =
+      `radial-gradient(ellipse at ${GEO.C.x}% ${GEO.C.y}%, rgba(0,0,0,.55) 0%, rgba(0,0,0,.15) 30%, transparent 55%)`;
+  }
+  applyLayout(); layoutEdges();
+  addEventListener('resize', () => { applyLayout(); sendShardFocus(); });
+
 
   // Ring-Beschriftungen aus der Config setzen — wirkt auch bei gecachter index.html
   const DESC = {
@@ -238,6 +348,7 @@
     if (activeFrame) {
       activeFrame.contentWindow.postMessage({ type: 'reset' }, location.origin);
       activeFrame = null;
+      setTimeout(sendShardFocus, 1800);
     }
     await backToMenu();
   }
@@ -246,7 +357,7 @@
     if (e.origin !== location.origin || !e.data) return;
     if (e.data.type === 'ready')
       for (const k of Object.keys(frames))
-        if (frames[k].contentWindow === e.source) readyResolvers[k]();
+        if (frames[k].contentWindow === e.source) { readyResolvers[k](); sendShardFocus(); }
     // exit zaehlt nur von der AKTIVEN Welt — Standby-Frames (z.B. deren Idle) duerfen
     // die laufende Welt nicht beenden
     if (e.data.type === 'exit' && hubState === 'world' &&

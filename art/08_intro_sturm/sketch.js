@@ -23,6 +23,7 @@ const ZMAX = 4;                 // max. Kamera-Zoom (Sphäre als Partikel-Wand)
 let flightStart = 0;
 let flightFixed = null;         // Test-Hook ?flight=0..1 (eingefrorener Frame)
 let visitorName = '';
+let preview = null;             // Hub-Vorschau: {x,y} in % — wo die Sphaere im Standby liegen soll
 let dust = [];                 // Geschwindigkeits-Streifen im Flug
 const R_BIG = 150;             // Intro-Partikelradius
 const easeIO = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -80,6 +81,7 @@ function setup() {
         if (e.origin !== location.origin || !e.data) return;
         if (e.data.type === 'enter') startEmbedFlight(e.data.name);
         if (e.data.type === 'reset') resetToIntro();
+        if (e.data.type === 'preview') { preview = { x: e.data.x, y: e.data.y }; background(7, 8, 12); }
       });
     } else {
       startEmbedFlight(q.get('name'));
@@ -364,7 +366,14 @@ function layout() {
 function draw() {
   // Standby im Hub: als lebendige Vorschau die neutrale Sphäre atmen lassen
   // (Scherbe im zerrissenen Menü) — kein Intro-Partikel, keine UI
-  if (appState === 'intro' && EMBED) { clearBg(34); renderPool(1); return; }
+  if (appState === 'intro' && EMBED) {
+    // Vorschau-Kamera: Sphaere auf den vom Hub gemeldeten Scherben-Schwerpunkt legen
+    clearBg(34);
+    const cx = width / 2, cy = height * 0.40;
+    const ax = preview ? preview.x / 100 * width : cx, ay = preview ? preview.y / 100 * height : cy;
+    renderPool(1, { z: preview ? 0.9 : 1, ax, ay, fx: cx, fy: cy });
+    return;
+  }
   if (appState === 'intro') { drawIntro(); return; }
   if (appState === 'flight') { drawFlight(); return; }
   clearBg(textMode ? 255 : 34);              // App

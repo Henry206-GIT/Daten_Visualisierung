@@ -1247,12 +1247,19 @@
       setPhase('survey');
       const pv = country ? country.pov : { lat: 51.2, lng: 10.45 };
       // POV nach dem ersten Render setzen (setPhase/START_POV liefen davor)
-      const previewPov = () => { globe.pointOfView({ lat: pv.lat, lng: pv.lng, altitude: 1.0 }, 0);
-        globe.controls().autoRotateSpeed = 0.18; };
+      const previewPov = () => {
+        globe.pointOfView({ lat: pv.lat, lng: pv.lng, altitude: 1.0 }, 0);
+        globe.controls().autoRotateSpeed = 0.18;
+        globe.controls().target.set(0, 0, 0);
+      };
       previewPov(); setTimeout(previewPov, 300); setTimeout(previewPov, 1500);
+
       addEventListener('message', e => {
         if (e.origin !== location.origin || !e.data) return;
-        if (e.data.type === 'enter' && phase === 'survey') startEmbedFlight(e.data);
+        if (e.data.type === 'enter' && phase === 'survey') {
+          globe.controls().target.set(0, 0, 0); // Vorschau-Versatz zuruecknehmen
+          startEmbedFlight(e.data);
+        }
         if (e.data.type === 'reset' && phase !== 'survey') {
           resetKiosk();
           setTimeout(previewPov, 1700);
