@@ -202,7 +202,7 @@
       // (Frame bleibt Vollbild, damit die Clip-Maske nichts abschneidet)
       if (frames[k]) shardFocus[k] = { x: G.x, y: G.y - 8 };
       if (k === 'p09') { // Globus-Frame: leicht vergroessert + verschoben, Motiv auf G
-        const tx = (G.x - 50) / 100 * innerWidth, ty = (G.y - 8 - 50) / 100 * innerHeight;
+        const tx = (G.x - 50) / 100 * innerWidth, ty = (G.y - 3 - 50) / 100 * innerHeight;
         p09Tf = `translate(${tx}px, ${ty}px) scale(1.25)`; // Naehe kommt aus der Welt (POV)
         if (hubState === 'menu' || hubState === 'portal') frames.p09.style.transform = p09Tf;
       }

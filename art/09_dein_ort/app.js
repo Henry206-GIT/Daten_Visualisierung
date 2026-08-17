@@ -1248,11 +1248,20 @@
       const pv = country ? country.pov : { lat: 51.2, lng: 10.45 };
       // POV nach dem ersten Render setzen (setPhase/START_POV liefen davor)
       const previewPov = () => {
-        globe.pointOfView({ lat: pv.lat, lng: pv.lng, altitude: 0.42 }, 0); // Deutschland nah
+        globe.pointOfView({ lat: pv.lat, lng: pv.lng, altitude: 0.30 }, 0); // Deutschland fuellt die Scherbe
         globe.controls().autoRotateSpeed = 0.18;
         globe.controls().target.set(0, 0, 0);
       };
       previewPov(); setTimeout(previewPov, 300); setTimeout(previewPov, 1500);
+      // Vorschau: Heat-Teppich (Karte 1, Filter 'Alle') schon im Standby zeigen —
+      // so sieht man in der Scherbe die Anwendung, wie sie gleich aussieht
+      setTimeout(() => {
+        if (phase !== 'survey') return;
+        heatVisible = true;
+        lastCellSize = cellSizeDeg();
+        rebuildHeat();
+        updateStage(true);
+      }, 400);
 
       addEventListener('message', e => {
         if (e.origin !== location.origin || !e.data) return;
@@ -1262,7 +1271,8 @@
         }
         if (e.data.type === 'reset' && phase !== 'survey') {
           resetKiosk();
-          setTimeout(previewPov, 1700);
+          setTimeout(() => { previewPov(); heatVisible = true; lastCellSize = cellSizeDeg();
+            rebuildHeat(); updateStage(true); }, 1700);
         }
       });
     } else {
