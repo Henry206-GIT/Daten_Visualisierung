@@ -15,6 +15,8 @@
 
   function mkSlot() { return { x: 0, y: 0, vx: 0, vy: 0, present: false, _seen: 0, _init: false }; }
 
+  const DETECT_HZ = 22;          // Zielrate der Erkennung (Rest der Zeit gehoert der UI)
+  let nextDetect = 0, detCost = 0;
   let video = null, stream = null, landmarker = null;
   let lastErr = null;            // letzter Init-Fehler (Permission, kein Geraet, ...)
   let running = false, starting = false, lastTs = -1, lastVideoTime = -1;
@@ -78,7 +80,7 @@
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     if (video) { video.remove(); video = null; }
     if (landmarker) { try { landmarker.close(); } catch (e) { /* egal */ } landmarker = null; }
-    delegate = null; detN = 0; detT0 = 0;
+    delegate = null; detN = 0; detT0 = 0; nextDetect = 0; detCost = 0;
   }
 
   /* ---------- Erkennungs-Schleife (eigene RAF, unabhängig von p5) ---------- */
@@ -86,6 +88,12 @@
     if (!running) return;
     requestAnimationFrame(tick);
     if (!video || video.readyState < 2 || video.currentTime === lastVideoTime) return;
+    // Drosselung: detectForVideo laeuft SYNCHRON auf dem Main-Thread. Ungedrosselt (jeder
+    // Frame) blockiert das Klicks/Scrollen — die Seite fuehlt sich eingefroren an.
+    // Zielrate DETECT_HZ, zusaetzlich adaptiv: teure Erkennungen vergroessern den Abstand.
+    const nowMs = performance.now();
+    if (nowMs < nextDetect) return;
+    nextDetect = nowMs + Math.max(1000 / DETECT_HZ, detCost * 1.6);
     lastVideoTime = video.currentTime;
 
     let res;
@@ -94,6 +102,7 @@
     lastTs = ts;
     try { res = landmarker.detectForVideo(video, ts); }
     catch (e) { console.info('[hand] Erkennung gestoppt:', e && e.message); stop(); return; }
+    detCost = performance.now() - ts;               // gemessene Kosten -> naechster Abstand
 
     const hands = (res && res.landmarks) || [];
     const now = performance.now();
@@ -143,6 +152,7 @@
     isStarting: () => starting,
     delegate: () => delegate,      // Konsole: Hand.delegate() -> 'GPU' oder 'CPU'
     hz: () => detT0 ? detN / ((performance.now() - detT0) / 1000) : 0,   // Erkennungen/s
+    cost: () => +detCost.toFixed(1),   // ms pro Erkennung (Main-Thread-Blockade)
     // Kamera grundsätzlich vorhanden? (sagt nichts über die Permission)
     available: () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
     // Warum nicht verfügbar? (haeufigster Fall: HTTP ueber LAN-IP = unsicherer Kontext)
