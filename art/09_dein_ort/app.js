@@ -1050,7 +1050,7 @@
     flightT0 = performance.now();
     globe.pointOfView(country ? { lat: country.pov.lat, lng: country.pov.lng, altitude: 2.1 } : GERMANY_POV, FLY1);
     setTimeout(() => globe.pointOfView(
-      { lat: visitor.lat, lng: visitor.lng, altitude: 0.30 }, FLY2), FLY1 + 100 / FAST);
+      { lat: visitor.lat, lng: visitor.lng, altitude: 0.16 }, FLY2), FLY1 + 100 / FAST); // Landung nah: Heatmap fuellt das Bild
     setTimeout(() => land(!Q.has('fly')), FLY_TOTAL); // Dev-Flug nicht persistieren
     requestAnimationFrame(flightTick);
   }
@@ -1352,7 +1352,7 @@
     const loc = plzMap[plz] ? entryFor(plz) : entryFor(country ? '0' : '10115');
     visitor = Object.assign(
       { age: +(Q.get('age') || 34), party: Q.get('party') || 'SPD', ts: Date.now() }, loc);
-    if (!Q.has('pov')) globe.pointOfView({ lat: visitor.lat, lng: visitor.lng, altitude: 0.8 }, 0);
+    if (!Q.has('pov')) globe.pointOfView({ lat: visitor.lat, lng: visitor.lng, altitude: 0.35 }, 0);
     land(false); // Dev-Besucher nicht persistieren
     if (Q.has('detail')) renderDetail(Q.get('detail'));
   } else {

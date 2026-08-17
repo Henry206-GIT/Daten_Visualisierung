@@ -41,6 +41,15 @@
     hubState = s; body.className = s;
     // Globus-Vorschau-Transform nur im Menue/Portal, beim Eintauchen Vollbild
     if (frames.p09) frames.p09.style.transform = (s === 'menu' || s === 'portal') ? p09Tf : '';
+    // Scherben-Clips (Inline-Style!) beim Eintauchen entfernen — CSS 'clip-path:none'
+    // wuerde gegen den Inline-Style verlieren; im Menue werden sie neu gesetzt
+    if (s === 'enter' || s === 'world' || s === 'leave') {
+      for (const f of Object.values(frames)) f.style.clipPath = '';
+      const w = document.getElementById('wrap-p09'); if (w) w.style.clipPath = '';
+      const sh = document.getElementById('shard-w3'); if (sh) sh.style.clipPath = '';
+    } else if (s === 'menu' || s === 'portal') {
+      if (typeof applyLayout === 'function') applyLayout();
+    }
 
   };
 

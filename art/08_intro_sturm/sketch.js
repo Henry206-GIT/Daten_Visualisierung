@@ -71,6 +71,7 @@ function setup() {
     handIdleReset = armIdle;                       // Handbewegung zaehlt auch als Aktivitaet
     const startEmbedFlight = name => {
       visitorName = (name || '').trim().toUpperCase();
+      preview = null; background(7, 8, 12);          // Vorschau-Kamera aus, Vollbild-Sturm
       appState = 'flight'; flightStart = millis(); setBody('flight');
       armIdle();
     };
@@ -413,7 +414,16 @@ function drawFlight() {
     const pr = lerp(70, 18, e);
     drawTail(cx, sy, 40 + 170 * v, pr);                          // Flug-Schweif nach unten
     drawBig(cx, sy, pr, 1);                                       // Partikel sitzt fix im Bild
-    if (visitorName) nameText(visitorName, cx, sy - pr - 18, 1, pr);
+    if (visitorName) {
+      // Name auf fester Bildhoehe (kein Wandern -> keine Text-Geisterspur durch das
+      // Alpha-Clear); Bereich vorher hart loeschen
+      const ny = sy - 70 - 18;
+      // weicher dunkler Schein hinter dem Namen (loescht die alte Textspur, ohne
+      // einen harten Balken in die Streifen zu schneiden)
+      noStroke();
+      for (let i = 4; i >= 1; i--) { fill(7, 8, 12, 60); ellipse(cx, ny - 12, 120 + i * 90, 44 + i * 18); }
+      nameText(visitorName, cx, ny, 1, 70);
+    }
   } else if (el < total) {
     // Kamera zoomt raus und fährt vom Partikel auf das Sphären-Zentrum -> Default (identisch)
     const f = easeIO((el - FLY_MS) / ZOOM_MS);
