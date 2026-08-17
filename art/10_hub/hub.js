@@ -193,12 +193,16 @@
     drawCracks(now / 1000);
   })(0);
   function applyLayout() {
+    // Scherben-Clips nur im Menue/Portal setzen. Sonst reaktiviert ein resize
+    // (F11/Fullscreen, Fenstergroesse) die Masken waehrend eine Welt laeuft
+    // -> man sieht nur ein Drittel des Bildes.
+    const inMenu = (hubState === 'menu' || hubState === 'portal');
     const P = polys();
     for (const k of Object.keys(P)) {
       const css = polyCSS(P[k]);
       const shard = k === 'w3' ? document.getElementById('shard-w3')
         : k === 'p09' ? document.getElementById('wrap-p09') : frames[k];
-      if (shard) shard.style.clipPath = css;
+      if (shard) shard.style.clipPath = inMenu ? css : '';
       if (layoutEls.zone[k]) layoutEls.zone[k].style.clipPath = css;
       const G = centroid(P[k]);
       // Label: auf der Achse C->G, leicht ueber G hinaus (weg vom Riss), fuer w3 unter G
@@ -213,7 +217,7 @@
       if (k === 'p09') { // Globus-Frame: leicht vergroessert + verschoben, Motiv auf G
         const tx = (G.x - 50) / 100 * innerWidth, ty = (G.y - 3 - 50) / 100 * innerHeight;
         p09Tf = `translate(${tx}px, ${ty}px) scale(1.25)`; // Naehe kommt aus der Welt (POV)
-        if (hubState === 'menu' || hubState === 'portal') frames.p09.style.transform = p09Tf;
+        frames.p09.style.transform = inMenu ? p09Tf : '';   // im World-Zustand Vollbild
       }
       if (k === 'w3') { // QR sitzt auf dem Schwerpunkt der unteren Scherbe
         const img = document.querySelector('#shard-w3 img');

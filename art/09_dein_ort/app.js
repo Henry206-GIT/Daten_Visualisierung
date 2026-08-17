@@ -171,9 +171,16 @@
     // Bögen für Karte 3 (Wohnort -> Herzens-Ort)
     .arcStartLat(d => d.fromLat).arcStartLng(d => d.fromLng)
     .arcEndLat(d => d.toLat).arcEndLng(d => d.toLng)
-    .arcColor(() => '#ff7bb0')
-    .arcStroke(0.28)
-    .arcAltitudeAutoScale(0.4)
+    // 260 gleich dicke, deckende Boegen ergaben ein pinkes Knaeuel ueber ganz
+    // Deutschland. Jetzt: fremde Boegen hauchduenn/transparent, der EIGENE hell,
+    // hoch gewoelbt (liegt nicht flach auf der Flaeche).
+    .arcColor(d => d.mine ? ['rgba(255,255,255,0.95)', 'rgba(255,140,190,0.95)']
+                          : ['rgba(255,123,176,0.13)', 'rgba(255,123,176,0.03)'])
+    .arcStroke(d => d.mine ? 0.42 : 0.09)
+    .arcAltitudeAutoScale(d => d.mine ? 0.62 : 0.45)
+    .arcDashLength(d => d.mine ? 0.5 : 1)
+    .arcDashGap(d => d.mine ? 0.25 : 0)
+    .arcDashAnimateTime(d => d.mine ? 3500 : 0)
     .arcsTransitionDuration(0)
     .htmlAltitude(0.012)
     .htmlElement(() => {
@@ -535,7 +542,15 @@
     const cells = latticeKDE([pts], sizeDeg);
     let max = 0;
     for (const c of cells) if (c.v[0] > max) max = c.v[0];
-    for (const c of cells) c.t = max ? Math.pow(Math.min(1, c.v[0] / max), heat.contrast) : 0;
+    // Herzens-Orte sind PUNKTE, nicht Flaeche: mit dem flachen Standard-Kontrast
+    // schmiert die KDE ueber das ganze Land und alles wird rosa. Daher steile
+    // Kurve + Schwelle — nur echte Haeufungen leuchten, der Rest bleibt dunkel.
+    const GAMMA = 2.1, CUT = 0.34;
+    for (const c of cells) {
+      const r = max ? Math.min(1, c.v[0] / max) : 0;
+      const t = Math.pow(r, GAMMA);
+      c.t = t < CUT ? 0 : (t - CUT) / (1 - CUT);
+    }
     return cells;
   }
 
@@ -644,10 +659,10 @@
             (78 + (35 - 78) * m) / 255 * br);
         }
       } else if (mapMode === 3) {
-        // Herzens-Orte: dunkel → warmes Rosa
-        if (!c.v[0]) col.setRGB(0.05, 0.05, 0.065);
-        else col.setRGB(
-          (40 + 215 * t) / 255, (30 + 90 * t) / 255, (48 + 125 * t) / 255);
+        // unter der Schwelle neutral dunkel, darueber warmes Rosa (Helligkeit ∝ t)
+        if (t <= 0) col.setRGB(0.045, 0.048, 0.062);
+        else { const k2 = 0.35 + 0.65 * t;
+          col.setRGB((55 + 200 * t) / 255 * k2, (30 + 90 * t) / 255 * k2, (60 + 115 * t) / 255 * k2); }
       } else {
         const x = t * (HEAT_STOPS.length - 1);
         const j = Math.min(HEAT_STOPS.length - 2, Math.floor(x));
@@ -858,7 +873,15 @@
     setTimeout(() => a3in.focus(), 60);
   });
 
-  function applyArcs() { globe.arcsData(mapMode === 3 ? loadArr(K3_KEY) : []); }
+  function applyArcs() {
+    if (mapMode !== 3) { globe.arcsData([]); return; }
+    const all = loadArr(K3_KEY);
+    // Seed-Boegen deckeln (sonst Knaeuel), eigene immer zeigen und markieren
+    // Nur ECHTE Boegen (Besucher dieser Station). Die Seed-Boegen legten sich als
+    // dunkles Strich-Knaeuel ueber die Karte; ihre Aussage steckt in der Dichte-Heat.
+    const real = all.filter(a => !a.seed).map(a => ({ ...a, mine: a.ts === myK3Ts }));
+    globe.arcsData(real.slice(-25));
+  }
 
   function setMap(m) {
     mapMode = m;
