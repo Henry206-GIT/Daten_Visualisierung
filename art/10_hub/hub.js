@@ -332,22 +332,41 @@
     // 2) Welt starten (sie ist schon geladen) — ihre Eintritts-Animation beginnt
     //    unten mittig, genau wo der Hub-Partikel gleich ankommt
     activeFrame = frames[key];
+    // Andere Welten schlafen legen: sie rendern sonst unsichtbar weiter und
+    // fressen GPU/CPU (im Sturm mit Hand-Tracking -> UI blockiert)
+    for (const k of Object.keys(frames))
+      if (k !== key) frames[k].contentWindow.postMessage({ type: 'sleep' }, location.origin);
     activeFrame.contentWindow.postMessage({
       type: 'enter', name: visitor.name, age: visitor.age,
       party: visitor.party, plz: (visitor.loc && visitor.loc.plz) || '10115', map,
     }, location.origin);
     await flyTo(50, 72, 34, 1100); // nahtlose Übergabe an den Welt-Partikel
     activeFrame.classList.add('active');
+    // Nur die aktive Welt darf Klicks bekommen (der Globus-Wrapper liegt sonst
+    // unsichtbar ueber dem Sturm und schluckt alles) — robuster als :has()
+    for (const k of Object.keys(frames)) {
+      const on = frames[k] === activeFrame;
+      frames[k].style.pointerEvents = on ? 'auto' : 'none';
+      if (k === 'p09') { const w = document.getElementById('wrap-p09');
+        if (w) w.style.pointerEvents = on ? 'auto' : 'none'; }
+    }
     setState('world'); // iframe blendet ein, Hub-Partikel blendet genau dort aus
   }
 
   async function leave() {
     setState('leave'); // iframe blendet aus, Partikel erscheint wieder
     if (activeFrame) activeFrame.classList.remove('active');
+    for (const k of Object.keys(frames)) {       // im Menue faengt nichts Klicks
+      frames[k].style.pointerEvents = 'none';
+      if (k === 'p09') { const w = document.getElementById('wrap-p09');
+        if (w) w.style.pointerEvents = 'none'; }
+    }
     await flyTo(CENTER.x, CENTER.y, 44, 1100);
     if (activeFrame) {
       activeFrame.contentWindow.postMessage({ type: 'reset' }, location.origin);
       activeFrame = null;
+      for (const f of Object.values(frames))     // Vorschauen wieder aufwecken
+        f.contentWindow.postMessage({ type: 'wake' }, location.origin);
       setTimeout(sendShardFocus, 1800);
     }
     await backToMenu();

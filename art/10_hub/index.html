@@ -34,7 +34,13 @@
   #wrap-p09 { position:fixed; inset:0; z-index:5; pointer-events:none;
     transition:clip-path .9s cubic-bezier(.2,.7,.3,1); }
   #wrap-p09 > .frame { position:absolute; }
-  body.world #wrap-p09 { clip-path:none !important; pointer-events:auto; }
+  body.world #wrap-p09 { clip-path:none !important; }
+  /* nur der aktive Frame faengt Klicks — sonst liegt der Globus-Wrapper unsichtbar
+     ueber dem Sturm und schluckt alle Mausklicks */
+  body.world #wrap-p09:has(> .frame.active) { pointer-events:auto; }
+  #wrap-p09 { pointer-events:none; }
+  .frame { pointer-events:none; }
+  body.world .frame.active { pointer-events:auto; }
   #shard-w3 { position:fixed; inset:0; z-index:6; pointer-events:none; opacity:0;
     transition:opacity .9s ease; background:
       radial-gradient(ellipse at 50% 100%, rgba(255,255,255,.07), rgba(0,0,0,0) 60%), #05060a; }

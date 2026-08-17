@@ -80,7 +80,9 @@ function setup() {
       setBody('intro');
       addEventListener('message', e => {
         if (e.origin !== location.origin || !e.data) return;
-        if (e.data.type === 'enter') startEmbedFlight(e.data.name);
+        if (e.data.type === 'sleep') { noLoop(); return; }
+        if (e.data.type === 'wake') { loop(); return; }
+        if (e.data.type === 'enter') { loop(); startEmbedFlight(e.data.name); }
         if (e.data.type === 'reset') resetToIntro();
         if (e.data.type === 'preview') { preview = { x: e.data.x, y: e.data.y }; background(7, 8, 12); }
       });

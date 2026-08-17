@@ -1290,6 +1290,8 @@
           globe.controls().target.set(0, 0, 0); // Vorschau-Versatz zuruecknehmen
           startEmbedFlight(e.data);
         }
+        if (e.data.type === 'sleep') { globe.pauseAnimation(); return; }
+        if (e.data.type === 'wake') { globe.resumeAnimation(); return; }
         if (e.data.type === 'reset' && phase !== 'survey') {
           resetKiosk();
           setTimeout(() => { previewPov(); heatVisible = true; lastCellSize = cellSizeDeg();
