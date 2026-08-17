@@ -45,15 +45,12 @@
   body.portal .frame:not(.focus), body.portal #shard-w3:not(.focus) { filter:brightness(.3) !important; }
   body.portal .frame.focus { filter:brightness(1.05) !important; }
   /* Riss-Linien: leuchtende Kanten entlang der Schnitte */
-  #cracks { position:fixed; inset:0; z-index:4; pointer-events:none; opacity:0;
-    transition:opacity .9s ease; }
+  /* Riss-Overlay UEBER den Scherben: Canvas zeichnet die vier Rissbahnen in Pixel-
+     Koordinaten exakt auf die Polygonkanten — ueberall gleich hell, unabhaengig von
+     Fokus/Stapelung; die Bahnen vibrieren subtil. */
+  #cracks { position:fixed; inset:0; z-index:8; pointer-events:none; opacity:0;
+    transition:opacity .9s ease; width:100%; height:100%; }
   body.menu #cracks, body.portal #cracks { opacity:1; }
-  /* Riss-Kanten: jede Scherbe hat darunter einen weissen, um wenige px groesseren
-     Klon (gleiches Polygon, per JS leicht aufgeblasen). Sichtbar bleibt nur der Saum
-     entlang der echten Scherbenkante -> Deckung per Konstruktion. */
-  #cracks .edge { position:fixed; inset:0; background:#fff; opacity:.9;
-    filter:blur(.6px) drop-shadow(0 0 6px rgba(255,255,255,.8)); }
-  #cracks::after { content:''; position:fixed; inset:0; background:#000; opacity:0; }
   /* Ueber den Scherben ein leichter Vignette-Schleier, damit Text lesbar bleibt */
   #veil { position:fixed; inset:0; z-index:9; pointer-events:none; opacity:0;
     transition:opacity .9s ease;
@@ -175,7 +172,7 @@
 <iframe class="frame" id="f-p08" title="Der Sturm" allow="camera"></iframe>
 <div id="wrap-p09"><iframe class="frame" id="f-p09" title="Dein Ort"></iframe></div>
 <div id="shard-w3"><img src="qr-ar.png" alt=""></div>
-<div id="cracks"><div class="edge" data-k="p08"></div><div class="edge" data-k="p09"></div><div class="edge" data-k="w3"></div></div>
+<canvas id="cracks"></canvas>
 <div id="veil"></div>
 <div class="zone" id="z-p08"></div><div class="zone" id="z-p09"></div><div class="zone" id="z-w3"></div>
 

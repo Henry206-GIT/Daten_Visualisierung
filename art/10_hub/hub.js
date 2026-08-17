@@ -98,14 +98,7 @@
   // ---------- Portale ----------
   const PORTALS = {
     p08: { el: document.getElementById('p-08'), url: '../08_intro_sturm/', title: 'Der Sturm' },
-    p09: {
-      el: document.getElementById('p-09'), url: '../09_dein_ort/', title: 'Dein Ort',
-      subs: [
-        { m: 1, label: 'Wer ist wie du?', desc: 'Die Wahl-Heatmap' },
-        { m: 2, label: 'Butter oder Nutella?', desc: 'Du wirst Teil der Karte' },
-        { m: 3, label: 'Herzens-Orte', desc: 'Wohin dein Herz zieht' },
-      ],
-    },
+    p09: { el: document.getElementById('p-09'), url: '../09_dein_ort/', title: 'Dein Ort' },
     w3: { el: document.getElementById('p-w3'), qr: true, title: 'AR Anwendung' },
   };
   const titleEl = document.getElementById('title');
@@ -149,36 +142,46 @@
     label: { p08: document.getElementById('p-08'), p09: document.getElementById('p-09'), w3: document.getElementById('p-w3') },
     zone: { p08: document.getElementById('z-p08'), p09: document.getElementById('z-p09'), w3: document.getElementById('z-w3') },
   };
-  const edgeEls = { p08: null, p09: null, w3: null };
-  for (const el of document.querySelectorAll('#cracks .edge')) edgeEls[el.dataset.k] = el;
-  // Polygon um d Pixel vom Schwerpunkt weg aufblasen (in Pixel-Raum, dann zurueck in %)
-  function inflate(P, G, dpx) {
-    return P.map(([x, y]) => {
-      const px = x / 100 * innerWidth, py = y / 100 * innerHeight;
-      const gx = G.x / 100 * innerWidth, gy = G.y / 100 * innerHeight;
-      let vx = px - gx, vy = py - gy; const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l;
-      return [(px + vx * dpx) / innerWidth * 100, (py + vy * dpx) / innerHeight * 100];
-    });
+  // Riss-Overlay: Canvas, Bahnen exakt auf den Polygonkanten (Pixel), Glow + Vibration
+  const crackCv = document.getElementById('cracks');
+  const crackCtx = crackCv.getContext('2d');
+  function crackSegments() {
+    const C = GEO.C;
+    return [
+      [[GEO.top.l, 0], [C.x, C.y]], [[GEO.top.r, 0], [C.x, C.y]],
+      [[GEO.bot.l, 100], [C.x, C.y]], [[GEO.bot.r, 100], [C.x, C.y]],
+    ];
   }
-  let edgeJitter = 0; // Vibration: der Saum atmet minimal (0..1)
-  function layoutEdges() {
-    const P = polys();
-    for (const k of Object.keys(P)) {
-      const G = centroid(P[k]);
-      const d = 1.6 + edgeJitter * 1.1;
-      if (edgeEls[k]) edgeEls[k].style.clipPath = polyCSS(inflate(P[k], G, d));
+  function drawCracks(t) {
+    const W = innerWidth, H = innerHeight;
+    if (crackCv.width !== W || crackCv.height !== H) { crackCv.width = W; crackCv.height = H; }
+    const g = crackCtx; g.clearRect(0, 0, W, H);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const [seg, si] of crackSegments().map((s, i) => [s, i])) {
+      const [a, b] = seg;
+      const ax = a[0] / 100 * W, ay = a[1] / 100 * H, bx = b[0] / 100 * W, by = b[1] / 100 * H;
+      const n = 10, pts = [];
+      const nx = -(by - ay), ny = bx - ax; const nl = Math.hypot(nx, ny) || 1;
+      for (let i = 0; i <= n; i++) {
+        const u = i / n; // 0 = Rand, 1 = Zentrum
+        const amp = (1 - u) * 2.2 * (i === 0 || i === n ? 0 : 1); // px, zum Zentrum hin ruhig
+        const w = Math.sin(t * 9 + si * 2.1 + i * 1.7) * 0.6 + Math.sin(t * 23 + si * 5 + i) * 0.4;
+        pts.push([ax + (bx - ax) * u + nx / nl * w * amp, ay + (by - ay) * u + ny / nl * w * amp]);
+      }
+      const path = () => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) g.lineTo(p[0], p[1]); };
+      // weicher Glow, dann Kernlinie
+      path(); g.strokeStyle = 'rgba(255,255,255,0.10)'; g.lineWidth = 12; g.stroke();
+      path(); g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 4; g.stroke();
+      path(); g.strokeStyle = 'rgba(255,255,255,0.95)'; g.lineWidth = 1.4; g.stroke();
     }
+    // Zentrum: kleiner heller Kern, wo die Risse sich treffen
+    g.beginPath(); g.arc(GEO.C.x / 100 * W, GEO.C.y / 100 * H, 3, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,0.9)'; g.fill();
   }
-  // Riss-Vibration: der leuchtende Saum flackert/atmet subtil (Space-Magic)
   (function vibrate(now) {
     requestAnimationFrame(vibrate);
     if (!(hubState === 'menu' || hubState === 'portal')) return;
-    const t = now / 1000;
-    edgeJitter = 0.5 + 0.5 * Math.sin(t * 6.3) * Math.sin(t * 2.1) + 0.25 * Math.sin(t * 17);
-    edgeJitter = Math.max(0, Math.min(1, edgeJitter));
-    for (const el of Object.values(edgeEls))
-      if (el) el.style.opacity = (0.75 + 0.25 * Math.sin(t * 9.7 + 1)).toFixed(3);
-    layoutEdges();
+    drawCracks(now / 1000);
   })(0);
   function applyLayout() {
     const P = polys();
@@ -212,7 +215,7 @@
     document.getElementById('veil').style.background =
       `radial-gradient(ellipse at ${GEO.C.x}% ${GEO.C.y}%, rgba(0,0,0,.55) 0%, rgba(0,0,0,.15) 30%, transparent 55%)`;
   }
-  applyLayout(); layoutEdges();
+  applyLayout(); drawCracks(0);
   addEventListener('resize', () => { applyLayout(); sendShardFocus(); });
 
 
@@ -281,14 +284,7 @@
     const P = PORTALS[key];
     setState('portal');
     setFocusVisual(key);
-    if (P.subs) {
-      // Untermenü: Portale weichen komplett, eigene Szene mit Titel
-      body.classList.add('submenu');
-      titleEl.textContent = P.title + ' · Wähle eine Karte';
-      hintEl.textContent = 'Klicke einen Kreis — dein Partikel taucht dort ein · Leere klicken = zurück';
-      await flyTo(50, 24, 40, 900); // Partikel schwebt über der Kreis-Reihe
-      subsOpen(key);
-    } else if (P.qr) {
+    if (P.qr) {
       // QR-Szene: Orb parkt links auf der Seite, der Code erscheint mittig auf Schwarz
       body.classList.add('qr');
       titleEl.textContent = P.title;
@@ -296,17 +292,12 @@
       qrShow(true);
       await flyTo(16, 46, 40, 900);
     } else {
-      // Anflugpunkt in PIXELN ab Ring-Rand — Prozentwerte wären auf X und Y
-      // verschieden lang, dann klebt der Orb am unteren Ring auf der Linie
+      // Partikel schwebt ueber dem Namen der Welt (Label-Oberkante + fester Abstand)
       const r = P.el.getBoundingClientRect();
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      const tx = innerWidth * CENTER.x / 100, ty = innerHeight * CENTER.y / 100;
-      let dx = tx - cx, dy = ty - cy;
-      const len = Math.hypot(dx, dy) || 1;
-      dx /= len; dy /= len;
-      const gap = r.width / 2 + 48; // Ring-Radius + fester Abstand
+      const x = (r.left + r.width / 2) / innerWidth * 100;
+      const y = (r.top - 44) / innerHeight * 100;
       hintEl.textContent = 'Klicke die Scherbe erneut — dein Partikel taucht ein';
-      await flyTo((cx + dx * gap) / innerWidth * 100, (cy + dy * gap) / innerHeight * 100, 36, 900);
+      await flyTo(x, y, 36, 900);
     }
   }
 
