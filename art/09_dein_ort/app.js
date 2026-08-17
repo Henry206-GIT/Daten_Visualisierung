@@ -1242,12 +1242,21 @@
       visitor.name = (d.name || '').trim().toUpperCase() || null;
     };
     if (Q.has('standby')) {
-      // Persistenter Hub-iframe: Globus dreht dunkel, Welt wartet auf 'enter'
+      // Persistenter Hub-iframe: als Vorschau (Scherbe im zerrissenen Menü) den
+      // Globus schon auf Deutschland/Land eingeschwenkt zeigen, langsam drehend
       setPhase('survey');
+      const pv = country ? country.pov : { lat: 51.2, lng: 10.45 };
+      // POV nach dem ersten Render setzen (setPhase/START_POV liefen davor)
+      const previewPov = () => { globe.pointOfView({ lat: pv.lat, lng: pv.lng, altitude: 1.0 }, 0);
+        globe.controls().autoRotateSpeed = 0.18; };
+      previewPov(); setTimeout(previewPov, 300); setTimeout(previewPov, 1500);
       addEventListener('message', e => {
         if (e.origin !== location.origin || !e.data) return;
         if (e.data.type === 'enter' && phase === 'survey') startEmbedFlight(e.data);
-        if (e.data.type === 'reset' && phase !== 'survey') resetKiosk();
+        if (e.data.type === 'reset' && phase !== 'survey') {
+          resetKiosk();
+          setTimeout(previewPov, 1700);
+        }
       });
     } else {
       startEmbedFlight({ name: Q.get('name'), age: Q.get('age'), party: Q.get('party'),

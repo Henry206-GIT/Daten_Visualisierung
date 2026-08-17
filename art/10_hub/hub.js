@@ -170,7 +170,7 @@
     focusKey = key;
     const P = PORTALS[key];
     setState('portal');
-    for (const k of Object.keys(PORTALS)) PORTALS[k].el.classList.toggle('focus', k === key);
+    setFocusVisual(key);
     if (P.subs) {
       // Untermenü: Portale weichen komplett, eigene Szene mit Titel
       body.classList.add('submenu');
@@ -195,7 +195,7 @@
       const len = Math.hypot(dx, dy) || 1;
       dx /= len; dy /= len;
       const gap = r.width / 2 + 48; // Ring-Radius + fester Abstand
-      hintEl.textContent = 'Klicke den Kreis erneut — dein Partikel taucht ein';
+      hintEl.textContent = 'Klicke die Scherbe erneut — dein Partikel taucht ein';
       await flyTo((cx + dx * gap) / innerWidth * 100, (cy + dy * gap) / innerHeight * 100, 36, 900);
     }
   }
@@ -204,10 +204,10 @@
     subsClose();
     qrShow(false);
     focusKey = null;
-    for (const k of Object.keys(PORTALS)) PORTALS[k].el.classList.remove('focus');
+    setFocusVisual(null);
     setState('menu');
     titleEl.textContent = 'Der Partikel-Hub · Wähle eine Welt';
-    hintEl.textContent = 'Klicke ein Portal — dein Partikel fliegt dorthin';
+    hintEl.textContent = 'Klicke eine Scherbe — dein Partikel fliegt dorthin';
     await flyTo(CENTER.x, CENTER.y, 44, 900);
   }
 
@@ -253,17 +253,29 @@
         activeFrame && e.source === activeFrame.contentWindow) leave();
   });
 
-  for (const k of Object.keys(PORTALS))
-    PORTALS[k].el.addEventListener('click', ev => {
-      ev.stopPropagation();
-      if (hubState === 'menu') focusPortal(k);
-      else if (hubState === 'portal' && k === focusKey && !PORTALS[k].subs && !PORTALS[k].qr)
-        enter(k, null);
-      else if (hubState === 'portal' && k !== focusKey) { subsClose(); focusPortal(k); }
-    });
+  const onPortalClick = k => ev => {
+    ev.stopPropagation();
+    if (hubState === 'menu') focusPortal(k);
+    else if (hubState === 'portal' && k === focusKey && !PORTALS[k].subs && !PORTALS[k].qr)
+      enter(k, null);
+    else if (hubState === 'portal' && k !== focusKey) { subsClose(); focusPortal(k); }
+  };
+  const ZONES = { p08: 'z-p08', p09: 'z-p09', w3: 'z-w3' };
+  for (const k of Object.keys(PORTALS)) {
+    PORTALS[k].el.addEventListener('click', onPortalClick(k));
+    const z = document.getElementById(ZONES[k]);
+    if (z) z.addEventListener('click', onPortalClick(k)); // ganze Scherbe = Portal
+  }
+  const shardEl = k => k === 'w3' ? document.getElementById('shard-w3') : frames[k];
+  function setFocusVisual(key) {
+    for (const k of Object.keys(PORTALS)) {
+      PORTALS[k].el.classList.toggle('focus', k === key);
+      const sh = shardEl(k); if (sh) sh.classList.toggle('focus', k === key);
+    }
+  }
   document.addEventListener('click', e => {
     if (hubState !== 'portal') return;
-    if (e.target.closest('.ring, .sub-circle, #qr .card')) return;
+    if (e.target.closest('.ring, .sub-circle, .zone, #qr .card')) return;
     backToMenu(); // Klick ins Leere: eine Stufe zurück
   });
 

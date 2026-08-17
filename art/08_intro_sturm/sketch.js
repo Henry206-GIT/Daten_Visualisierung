@@ -362,6 +362,9 @@ function layout() {
 
 /* ---------- Draw (Dispatcher) ---------- */
 function draw() {
+  // Standby im Hub: als lebendige Vorschau die neutrale Sphäre atmen lassen
+  // (Scherbe im zerrissenen Menü) — kein Intro-Partikel, keine UI
+  if (appState === 'intro' && EMBED) { clearBg(34); renderPool(1); return; }
   if (appState === 'intro') { drawIntro(); return; }
   if (appState === 'flight') { drawFlight(); return; }
   clearBg(textMode ? 255 : 34);              // App
