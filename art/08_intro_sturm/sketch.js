@@ -43,7 +43,7 @@ function setup() {
                  ang: random(TWO_PI), rad: sqrt(random()),
                  sIdx: 0, col: GREY.slice(), tcol: GREY.slice(),
                  isCore: false, b: 0.6, jitter: random(1000),
-                 sizeK: random(0.7, 1.4), active: false });
+                 sizeK: random(0.7, 1.4), active: false, nph: i % 3 });
 
   for (let i = 0; i < 170; i++)         // Geschwindigkeits-Streifen (vorbeiziehender Staub)
     dust.push({ x: random(width), y: random(height), len: random(28, 120), spd: random(0.6, 1.7) });
@@ -487,6 +487,7 @@ function renderPool(gA, cam) {
   push();
   translate(c.ax, c.ay); scale(c.z); translate(-c.fx, -c.fy);
   blendMode(textMode ? BLEND : ADD);
+  const ctx2d = drawingContext;
   for (const p of parts) {
     if (!p.active) continue;
     const s = spheres[p.sIdx];
@@ -501,8 +502,12 @@ function renderPool(gA, cam) {
       stiff = p.isCore ? 0.05 : 0.04; nf = 0.3;
     }
     p.vx += (tx - p.x) * stiff; p.vy += (ty - p.y) * stiff;
-    const nA = noise(p.x * 0.0013, p.y * 0.0013, frameCount * 0.003 + p.jitter) * TWO_PI * 2;
-    p.vx += cos(nA) * nf; p.vy += sin(nA) * nf;
+    // Perlin-Drift: nur jeden 3. Frame pro Partikel neu (versetzt), sonst gecachte Richtung
+    if (((frameCount + p.nph) % 3) === 0 || p.nx === undefined) {
+      const nA = noise(p.x * 0.0013, p.y * 0.0013, frameCount * 0.003 + p.jitter) * TWO_PI * 2;
+      p.nx = cos(nA); p.ny = sin(nA);
+    }
+    p.vx += p.nx * nf; p.vy += p.ny * nf;
     // Hand: radiale Abstossung (weicher Rand) + Mitreiss-Impuls in Wischrichtung.
     // Wirkt NUR auf die Geschwindigkeit — Ziele (tx,ty) bleiben unangetastet.
     if (hands) for (const h of hands) {
@@ -524,13 +529,39 @@ function renderPool(gA, cam) {
       fill(c[0], c[1], c[2], 120 * gA); circle(p.x, p.y, dr * 1.7);
       fill(c[0], c[1], c[2], 255 * gA); circle(p.x, p.y, dr);
     } else {
-      fill(c[0], c[1], c[2], 13 * b * gA); circle(p.x, p.y, (p.isCore ? 17 : 12) * kk);
-      fill(c[0], c[1], c[2], 48 * b * gA); circle(p.x, p.y, (p.isCore ? 6.5 : 3.2) * kk);
-      if (p.isCore) { fill(c[0], c[1], c[2], 110 * gA); circle(p.x, p.y, 2.6 * kk); }
+      const sp = glowSprite(c, p.isCore);
+      const w = sp.S * kk;
+      ctx2d.globalAlpha = Math.min(1, b * gA);
+      ctx2d.drawImage(sp.img, p.x - w / 2, p.y - w / 2, w, w);
     }
   }
+  ctx2d.globalAlpha = 1;
   blendMode(BLEND);
   pop();
+}
+
+/* ---------- Glow-Sprites (Performance) ----------
+   Vorher: 2-3 fill()+circle() Path-Draws pro Partikel (~10k/Frame). Jetzt: ein
+   vorgerendertes Sprite pro (Farbe, Kern?) via drawImage — Canvas2D blittet das auf
+   der GPU, kein Pfad-Rasterizing. Farbe wird auf 24 Stufen/Kanal quantisiert. */
+const spriteCache = new Map();
+function glowSprite(c, isCore) {
+  const q = 24;
+  const key = ((c[0] / 255 * q) | 0) + ',' + ((c[1] / 255 * q) | 0) + ',' + ((c[2] / 255 * q) | 0) + (isCore ? 'c' : 'n');
+  let sp = spriteCache.get(key);
+  if (sp) return sp;
+  const S = isCore ? 44 : 32; // Sprite-Kante (px) fuer sizeK=1, b=1
+  const g = document.createElement('canvas'); g.width = g.height = S;
+  const x = g.getContext('2d'); const m = S / 2;
+  const rr = isCore ? [17, 6.5, 2.6] : [12, 3.2, 0], aa = isCore ? [13, 48, 110] : [13, 48, 0];
+  for (let i = 0; i < 3; i++) {
+    if (!rr[i]) continue;
+    x.fillStyle = `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${aa[i] / 255})`;
+    x.beginPath(); x.arc(m, m, rr[i] / 2, 0, Math.PI * 2); x.fill();
+  }
+  sp = { img: g, S };
+  spriteCache.set(key, sp);
+  return sp;
 }
 
 /* ---------- Caption ---------- */

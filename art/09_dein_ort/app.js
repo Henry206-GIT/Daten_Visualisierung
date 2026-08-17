@@ -152,7 +152,7 @@
     .backgroundColor('#000000')
     .showAtmosphere(false)
     .showGraticules(false)
-    .pathsData(grid.concat(kreisPaths))
+    .pathsData(grid)
     .pathPointAlt(a => a[2] || 0.002)
     .pathColor(pathColorFn)
     .pathTransitionDuration(0)
@@ -190,6 +190,9 @@
     .htmlElementVisibilityModifier((el, vis) => { el.style.opacity = vis ? 1 : 0; });
   globe.globeMaterial().color.set('#000000');
   globe.pointOfView(START_POV, 0);
+  // Performance: Pixel-Ratio deckeln — bei DPR 2 rendert die GPU sonst 4x so viele Pixel,
+  // ohne dass es auf einem Ausstellungsbildschirm sichtbar besser wird
+  { const r = globe.renderer(); if (r && r.setPixelRatio) r.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5)); }
   addEventListener('resize', () => globe.width(innerWidth).height(innerHeight));
 
   // ---------- Besucher-Speicher + Seed ----------
@@ -383,7 +386,9 @@
     stage = s;
     // fern: Kreis-Pfade ganz raus — als Linien ueber den farbigen Caps zerhacken sie
     // das Choropleth zu Sprenkeln (auch schwarz gefaerbt bleiben sie sichtbar)
-    globe.pathsData(stage === 'fern' ? grid : grid.concat(kreisPaths));
+    // Kreis-Pfade (434 Linien, ~30k Punkte) nur in der Nah-Stufe rendern — in
+    // fern/mittel sind sie ohnehin fast unsichtbar, kosten aber jeden Frame Draw-Calls
+    globe.pathsData(stage === 'nah' ? grid.concat(kreisPaths) : grid);
     globe.pathColor(p => pathColorFn(p)); // frische Wrapper: gleiche Referenz triggert kein Update
     globe.polygonStrokeColor(d => strokeFn(d));
     if (s === 'fern') computeLandHeat();
@@ -391,12 +396,26 @@
     globe.polygonCapColor(f => capFn(f));
   }
 
+  // kleine Geometrie-Merge (non-indexed) — spart den BufferGeometryUtils-Import
+  function mergeGeoms(list) {
+    const parts = list.map(g => g.index ? g.toNonIndexed() : g);
+    let n = 0; for (const g of parts) n += g.attributes.position.count;
+    const pos = new Float32Array(n * 3); let o = 0;
+    for (const g of parts) { pos.set(g.attributes.position.array, o); o += g.attributes.position.array.length; }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    return out;
+  }
+
   // ---------- Hologramm-Heat-Layer: lückenloses Hex-Gitter mit KDE + Zoom-LOD ----------
   // Hex-Gitter über ganz Deutschland; Wert je Zelle = Kernel-Dichte aller PLZ-Punkte
   // (Städte = viele PLZ = Peaks). Keine Löcher, Auflösung folgt dem Zoom.
   const heat = { opacity: 0.55, density: 1, relief: 1, smooth: 1.4, contrast: 0.35, cold: 1 };
   const DE_BBOX = country ? country.bbox : { s: 47.1, n: 55.2, w: 5.6, e: 15.3 };
-  const CELL_CAP = 150000;
+  // Adaptive Qualitaet: CELL_CAP sinkt automatisch, wenn die GPU die Frame-Zeit nicht
+  // haelt (Kiosk mit schwacher Grafik) — und steigt wieder, wenn Luft ist.
+  let CELL_CAP = 150000;
+  const CAP_MIN = 25000, CAP_MAX = 150000;
 
   // Deutschland-Maske: Länder-Polygone einmal in ein Canvas rastern -> O(1)-Inside-Test.
   // Hexagone ausserhalb des Umrisses entfallen, innen wird lueckenlos gefuellt.
@@ -599,7 +618,10 @@
       heatMesh.geometry.dispose();
       heatMesh.material.dispose();
     }
-    const geo = new THREE.CylinderGeometry(1, 1, 1, 6); // sechseckiges Prisma
+    // sechseckiges Prisma: Mantel offen + nur OBERER Deckel (unterer liegt unsichtbar auf der Kugel)
+    const side = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+    const cap = new THREE.CircleGeometry(1, 6); cap.rotateX(-Math.PI / 2); cap.translate(0, 0.5, 0);
+    const geo = mergeGeoms([side, cap]);
     geo.rotateX(Math.PI / 2); // Achse radial zur Kugel ausrichten
     const mat = new THREE.MeshBasicMaterial({
       transparent: true, opacity: heat.opacity,
@@ -1215,6 +1237,45 @@
     const maps = document.getElementById('maps'); // Karten 2/3 bleiben (Besucher-Daten je Land)
     if (maps) maps.querySelector('[data-map="1"]').textContent = 'Wo leben die Menschen?';
     document.title = `09 · ${country.name} — Heatmap`;
+  }
+
+  // ---------- Adaptive Qualitaet (Frame-Budget-Regler) ----------
+  {
+    let last = performance.now(), acc = 0, n = 0, cooldown = 0;
+    (function watch(t) {
+      requestAnimationFrame(watch);
+      const d = t - last; last = t;
+      if (phase !== 'explore' || !heatVisible) return;
+      acc += d; n++;
+      if (n < 60) return;                       // ~1 s Fenster
+      const avg = acc / n; acc = 0; n = 0;
+      if (cooldown > 0) { cooldown--; return; }
+      if (avg > 28 && CELL_CAP > CAP_MIN) {     // < ~35 fps: Zellen runter
+        CELL_CAP = Math.max(CAP_MIN, Math.round(CELL_CAP * 0.7));
+        cooldown = 2; lastCellSize = 0; rebuildHeat();
+      } else if (avg < 14 && CELL_CAP < CAP_MAX) { // > ~70 fps: wieder hoch
+        CELL_CAP = Math.min(CAP_MAX, Math.round(CELL_CAP * 1.25));
+        cooldown = 3; lastCellSize = 0; rebuildHeat();
+      }
+    })(performance.now());
+  }
+
+  // ---------- FPS-Overlay (?fps) ----------
+  if (Q.has('fps')) {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;font:12px monospace;color:#0f0;' +
+      'background:rgba(0,0,0,.6);padding:4px 6px;pointer-events:none';
+    document.body.appendChild(el);
+    let n = 0, t0 = performance.now(), worst = 0, last = t0;
+    (function tick(t) {
+      requestAnimationFrame(tick);
+      const d = t - last; last = t; if (d > worst) worst = d; n++;
+      if (t - t0 >= 500) {
+        el.textContent = `${Math.round(n / ((t - t0) / 1000))} fps · worst ${worst.toFixed(0)} ms · ` +
+          `${heatCells.length} Zellen (Cap ${CELL_CAP}) · DPR ${(globe.renderer().getPixelRatio()).toFixed(2)}`;
+        n = 0; t0 = t; worst = 0;
+      }
+    })(performance.now());
   }
 
   // ---------- Dev-Hooks ----------
