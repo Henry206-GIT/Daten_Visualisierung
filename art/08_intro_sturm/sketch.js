@@ -106,6 +106,7 @@ function setBody(cls) { document.body.className = cls + (EMBED ? ' embed' : '');
 
 /* ---------- Hand-Tracking (hand.js liefert window.HANDS) ---------- */
 const HAND_HOOK = new URLSearchParams(location.search).get('hand');  // '0' = aus, '1' = sofort an
+const MIX_HOOK = new URLSearchParams(location.search).get('mix');    // '0' = neutrale Kugel grau
 let handOn = false;              // Kraftfeld aktiv (= Tracking laeuft)
 let handPaint = () => {};        // Knopf-Beschriftung auffrischen
 let handIdleReset = null;        // Embed: Idle-Timer bei Handaktivitaet zuruecksetzen
@@ -293,9 +294,22 @@ function wireUI() {
 function rebuild() {
   const cap2 = (n) => Math.max(2, Math.round(n));
   if (!selLand) {                                    // NEUTRAL
-    const total = sumVotes(DATA.bund.votes);
+    const votes = DATA.bund.votes;
+    const total = sumVotes(votes);
     const n = Math.min(MAXP, cap2(total / params.ppp));
-    spheres = [{ party: null, votes: total, n, col: GREY, isCore: false }];
+    // Default bunt: EINE Kugel, aber die Partikel tragen die Parteifarben —
+    // Anteile = echte Zweitstimmen im Bund (?mix=0 -> wieder einfarbig grau)
+    let mix = null;
+    if (MIX_HOOK !== '0') {
+      const ordered = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+      let rest = n;
+      mix = ordered.map(([party, v], i) => {
+        const c = i === ordered.length - 1 ? rest : Math.min(rest, Math.round(n * v / total));
+        rest -= c;
+        return { col: hexToRgb(FARBEN[party] || '#cccccc'), n: c };
+      }).filter(m => m.n > 0);
+    }
+    spheres = [{ party: null, votes: total, n, col: GREY, isCore: false, mix }];
   } else {
     const votes = getLand(selLand).votes;
     const ordered = partiesOf(selLand);
@@ -313,11 +327,17 @@ function rebuild() {
   let k = 0;
   for (let si = 0; si < spheres.length; si++) {
     const s = spheres[si];
-    const b = !selLand ? 0.6 : (s.isCore ? 1.0 : 0.72);
+    const b = !selLand ? (s.mix ? 0.62 : 0.6) : (s.isCore ? 1.0 : 0.72);
+    let mi = 0, mLeft = s.mix ? s.mix[0].n : 0;      // Farb-Mix der neutralen Kugel
     for (let c = 0; c < s.n && k < MAXP; c++, k++) {
       const p = parts[k];
+      let col = s.col;
+      if (s.mix) {
+        while (mLeft <= 0 && mi < s.mix.length - 1) { mi++; mLeft = s.mix[mi].n; }
+        col = s.mix[mi].col; mLeft--;
+      }
       p.active = true; p.sIdx = si; p.isCore = s.isCore; p.b = b;
-      p.tcol = s.col; p.ang = random(TWO_PI); p.rad = sqrt(random());
+      p.tcol = col; p.ang = random(TWO_PI); p.rad = sqrt(random());
       p.pIdx = c; p.sphN = s.n;   // Position + Größe der Sphäre (gleichmäßige Buchstaben-Verteilung)
     }
   }
